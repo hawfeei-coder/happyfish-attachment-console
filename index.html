@@ -41,7 +41,7 @@ button{cursor:pointer}
 .tab{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;color:var(--muted)}
 .tab[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .count{font-family:var(--mono);font-size:11px;background:var(--bad-soft);color:var(--bad);padding:1px 6px;border-radius:999px;margin-left:4px}
-.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);text-decoration:none;padding:7px 12px;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .btn:hover{border-color:var(--pool)}
 .btn.primary{background:var(--pool);color:var(--pool-ink);border-color:var(--pool)}
 .btn.danger{color:var(--bad)}
@@ -442,7 +442,7 @@ function renderSettings() {
       <form id="adminForm" class="acts" style="margin-top:10px"><input id="adminEmail" type="email" required placeholder="assistant@email.com" aria-label="Email to add" style="flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg)"><button class="btn sm primary">Add</button></form>
     </div>
     <div class="box"><h3>Coaches' timetable from Digital Brain</h3>
-      <p style="margin:0 0 6px">${D.classes.length ? `<b>${D.classes.length}</b> weekly classes for ${new Set(D.classes.map((c) => c.coach_id)).size} coaches. Synced <b>${ago(lastSynced())}</b>.` : 'Not synced yet.'}</p>
+      <p style="margin:0 0 6px">${D.classes.length ? `<b>${D.classes.length}</b> weekly classes for ${((n) => n + (n === 1 ? ' coach' : ' coaches'))(new Set(D.classes.map((c) => c.coach_id)).size)}. Synced <b>${ago(lastSynced())}</b>.` : 'Not synced yet.'}</p>
       ${pendingSync() ? `<p class="warn" style="margin:0 0 6px">Sync requested ${ago(pendingSync().requested_at)} by ${esc(pendingSync().requested_by)}. Waiting for it to be done.</p>` : ''}
       <p class="muted" style="margin:0 0 8px;font-size:13px">If a coach's classes have changed in Digital Brain, request a sync. The person on duty is alerted on Telegram and copies the latest timetable in.</p>
       <div class="acts"><button class="btn primary sm" id="btnSync">Request timetable sync</button></div>
