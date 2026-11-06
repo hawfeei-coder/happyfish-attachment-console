@@ -131,6 +131,11 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;transition:.25s;z-index:50;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translateX(-50%)}
 .spin{opacity:.6;pointer-events:none}
+.slots{display:flex;flex-direction:column;gap:6px}
+.slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px}
+.slot:hover,.slot.on{border-color:var(--pool);background:var(--pool-soft)}
+.slot span{grid-column:1;font-size:12.5px;color:var(--muted)}
+.slot em{grid-row:1/3;grid-column:2;align-self:center;font-style:normal;font-size:12.5px;font-weight:600;color:var(--pool)}
 </style>
 </head>
 <body>
@@ -196,7 +201,7 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('s
 
 const REASONS = ['Lightning / wet weather', 'Coach on MC or leave', 'Class cancelled (no students)', 'Pool closure or maintenance', 'Public holiday', 'Other'];
 const LEAVE = ['MC', 'Annual leave', 'Emergency leave', 'Other leave'];
-let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [] };
+let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [], classes: [], syncs: [] };
 let me = null, tab = 'schedule', bot = null;
 let fView = 'upcoming', fCoach = '', fTrainee = '', repBatch = '', repShow = 'all', repOpen = null;
 try { tab = localStorage.getItem('hf-tab') || 'schedule'; } catch (e) {}
@@ -232,10 +237,12 @@ async function load() {
     sb.from('session_changes').select('*').order('changed_at'),
     sb.from('admins').select('*').order('email'),
     sb.from('notifications').select('session_id,trainee_id,kind,status,error,created_at').neq('status', 'sent').gte('created_at', addDays(todaySG(), -30)),
+    sb.from('coach_classes').select('*').order('start_time'),
+    sb.from('sync_requests').select('*').order('requested_at', { ascending: false }).limit(5),
   ]);
   const err = q.find((r) => r.error);
   if (err) throw new Error(err.error.message);
-  [D.sessions, D.trainees, D.coaches, D.branches, D.leave, D.log, D.changes, D.admins, D.notif] = q.map((r) => r.data);
+  [D.sessions, D.trainees, D.coaches, D.branches, D.leave, D.log, D.changes, D.admins, D.notif, D.classes, D.syncs] = q.map((r) => r.data);
   render();
 }
 const tr = (id) => D.trainees.find((t) => t.id === id) || { name: 'Unknown', required_hours: 24 };
@@ -243,6 +250,20 @@ const leaveOn = (coachId, date) => D.leave.find((l) => l.coach_id === coachId &&
 const clash = (s) => s.status === 'scheduled' && leaveOn(s.coach_id, s.date);
 const nextFreeWeek = (coachId, d) => { let n = addDays(d, 7); for (let i = 0; i < 8 && leaveOn(coachId, n); i++) n = addDays(n, 7); return n; };
 const hoursOf = (tid) => round2(D.sessions.filter((s) => s.status === 'completed').reduce((n, s) => n + s.session_trainees.filter((x) => x.trainee_id === tid).reduce((m, x) => m + Number(x.hours_credited), 0), 0));
+const lastSynced = () => D.classes.reduce((m, c) => (c.synced_at > m ? c.synced_at : m), '');
+const pendingSync = () => D.syncs.find((s) => s.status === 'pending');
+const ago = (ts) => { if (!ts) return 'never'; const d = Math.round((Date.now() - new Date(ts)) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
+const syncLine = () => `Timetable from Digital Brain: synced ${ago(lastSynced())}${pendingSync() ? ' · <span class="warn">sync requested</span>' : ''}`;
+// A coach's Digital Brain classes on one weekday, grouped into one slot per branch
+function slotsFor(coachId, date) {
+  if (!coachId || !date) return [];
+  const wd = asUTC(date).getUTCDay(), by = {};
+  D.classes.filter((c) => c.coach_id === coachId && c.weekday === wd).forEach((c) => { (by[c.branch] = by[c.branch] || []).push(c); });
+  return Object.entries(by).map(([branch, cs]) => {
+    cs.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    return { branch, start: cs[0].start_time.slice(0, 5), end: cs.reduce((m, c) => (c.end_time > m ? c.end_time : m), '').slice(0, 5), classes: cs };
+  });
+}
 const upcomingFor = (tid) => D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.session_trainees.some((x) => x.trainee_id === tid));
 
 /* ---------- render ---------- */
@@ -419,7 +440,20 @@ function renderSettings() {
     <div class="box"><h3>Who can use this console</h3>
       <table><tbody>${D.admins.map((a) => `<tr><td>${esc(a.email)}</td><td class="num">${a.email === me ? '<span class="muted">you</span>' : `<button class="btn sm danger" data-deladmin="${esc(a.email)}">Remove</button>`}</td></tr>`).join('')}</tbody></table>
       <form id="adminForm" class="acts" style="margin-top:10px"><input id="adminEmail" type="email" required placeholder="assistant@email.com" aria-label="Email to add" style="flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg)"><button class="btn sm primary">Add</button></form>
-    </div></div>`;
+    </div>
+    <div class="box"><h3>Coaches' timetable from Digital Brain</h3>
+      <p style="margin:0 0 6px">${D.classes.length ? `<b>${D.classes.length}</b> weekly classes for ${new Set(D.classes.map((c) => c.coach_id)).size} coaches. Synced <b>${ago(lastSynced())}</b>.` : 'Not synced yet.'}</p>
+      ${pendingSync() ? `<p class="warn" style="margin:0 0 6px">Sync requested ${ago(pendingSync().requested_at)} by ${esc(pendingSync().requested_by)}. Waiting for it to be done.</p>` : ''}
+      <p class="muted" style="margin:0 0 8px;font-size:13px">If a coach's classes have changed in Digital Brain, request a sync. The person on duty is alerted on Telegram and copies the latest timetable in.</p>
+      <div class="acts"><button class="btn primary sm" id="btnSync">Request timetable sync</button></div>
+    </div>
+    ${(() => { const mine = D.admins.find((a) => a.email === me) || {}; const link = bot?.username && mine.link_code ? `https://t.me/${bot.username}?start=A${mine.link_code}` : null; return `
+    <div class="box"><h3>My Telegram alerts</h3>
+      <p style="margin:0 0 8px">${mine.telegram_chat_id ? '<span class="ok">● Linked</span> to your Telegram.' : 'Link your own Telegram to get alerts from the console.'}</p>
+      ${link ? `<div class="acts" style="margin-bottom:10px"><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">${mine.telegram_chat_id ? 'Re-link' : 'Link my Telegram'}</a></div>` : '<p class="muted" style="font-size:13px">Connect the bot first.</p>'}
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="notifySync" ${mine.notify_sync ? 'checked' : ''}> Send me timetable sync requests</label>
+    </div>`; })()}
+  </div>`;
 }
 async function refreshBot() { try { bot = await api('botStatus'); } catch (e) { bot = { ok: false, error: e.message }; } render(); }
 
@@ -452,7 +486,8 @@ function dlgNew() {
       <div class="f"><label for="n-date">Date</label><input id="n-date" type="date" name="date" required min="${todaySG()}" value="${addDays(todaySG(), 1)}"></div></div>
     <div class="row2"><div class="f"><label for="n-start">From</label><input id="n-start" type="time" name="start_time" required value="09:00"></div>
       <div class="f"><label for="n-end">To</label><input id="n-end" type="time" name="end_time" required value="12:00"></div></div>
-    <div class="f"><label for="n-classes">Classes (optional, from Digital Brain)</label><input id="n-classes" name="classes_note" placeholder="e.g. 2.2 Toddler Beginner, 1.2 Baby Beginner"></div>
+    <div class="f"><span class="lbl">This coach's classes that day (Digital Brain)</span><div id="n-tt" class="slots"></div></div>
+    <div class="f"><label for="n-classes">Classes (optional)</label><input id="n-classes" name="classes_note" placeholder="e.g. 2.2 Toddler Beginner, 1.2 Baby Beginner"></div>
     <div class="hint" id="n-hint"></div>
     <div class="f"><span class="lbl">Trainees (max 2)</span><div class="checks">${trainees.map((t) => `<label><input type="checkbox" name="trainee_ids" value="${t.id}"><span>${esc(t.name)}${t.telegram_chat_id ? '' : ' <span class="warn" style="font-size:11.5px">· not on Telegram</span>'}</span><span class="sub">${hoursOf(t.id)} / ${Number(t.required_hours)}h</span></label>`).join('')}</div></div>
     ${errP}</div>${foot('Create &amp; notify')}`, async (fd) => {
@@ -462,12 +497,31 @@ function dlgNew() {
     const r = await api('createSession', { branch: fd.get('branch'), coach_id: fd.get('coach_id'), date: fd.get('date'), start_time: fd.get('start_time'), end_time: fd.get('end_time'), classes_note: fd.get('classes_note'), trainee_ids: ids });
     return 'Session created. ' + sentMsg(r);
   });
+  let slots = [];
   const upd = () => {
     const c = $('#n-coach').value, d = $('#n-date').value, s = $('#n-start').value, e = $('#n-end').value;
     const l = d && leaveOn(c, d);
     $('#n-hint').innerHTML = l ? `⚠️ This coach has ${esc(l.reason)} on ${fmtDay(d)}. Pick another date.` : (s && e && e > s ? `Counts as <b>${hrs({ start_time: s, end_time: e })}h</b> toward 24h for each trainee who attends.` : 'End time must be after start time.');
   };
-  ['n-coach', 'n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', upd)); upd();
+  const updSlots = () => {
+    slots = slotsFor($('#n-coach').value, $('#n-date').value);
+    const d = $('#n-date').value;
+    $('#n-tt').innerHTML = (slots.length
+      ? slots.map((sl, i) => `<button type="button" class="slot" data-slot="${i}"><b>${esc(short(sl.branch))} · ${fmtT(sl.start)}–${fmtT(sl.end)}</b><span>${sl.classes.map((c) => esc(c.lesson_level) + (c.tags ? ` (${esc(c.tags)})` : '')).join(' · ')}</span><em>Use this slot</em></button>`).join('')
+      : `<p class="muted" style="margin:0;font-size:13px">${D.classes.length ? `No classes found for this coach on ${d ? asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'long' }) + 's' : 'that day'}. Enter the slot by hand or request a sync.` : 'Timetable not synced yet. Enter the slot by hand.'}</p>`)
+      + `<p class="muted" style="margin:6px 0 0;font-size:12px">${syncLine()}</p>`;
+  };
+  $('#n-tt').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-slot]'); if (!b) return;
+    const sl = slots[+b.dataset.slot];
+    if ([...$('#n-branch').options].some((o) => o.value === sl.branch)) $('#n-branch').value = sl.branch;
+    $('#n-start').value = sl.start; $('#n-end').value = sl.end;
+    $('#n-classes').value = sl.classes.map((c) => c.lesson_level).join(', ');
+    $('#n-tt').querySelectorAll('.slot').forEach((x) => x.classList.toggle('on', x === b)); upd();
+  });
+  ['n-coach', 'n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', upd));
+  ['n-coach', 'n-date'].forEach((id) => $('#' + id).addEventListener('input', updSlots));
+  upd(); updSlots();
 }
 function dlgResched(s) {
   open(`<header><h2>Reschedule</h2><p>${esc(s.coach.name)} · currently ${when(s)}</p></header><div class="body">
@@ -500,6 +554,14 @@ function dlgCancel(s) {
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="notify" checked> Send Telegram alert to trainees</label>${errP}</div>${foot('Cancel session', 'solid-danger')}`, async (fd) => {
     const r = await api('cancelSession', { id: s.id, reason: fd.get('reason'), note: fd.get('note'), notify: !!fd.get('notify') });
     return 'Cancelled. ' + sentMsg(r);
+  });
+}
+function dlgSync() {
+  open(`<header><h2>Request timetable sync</h2><p>Asks for the senior coaches' classes to be copied again from Digital Brain.</p></header><div class="body">
+    <p style="margin:0" class="muted">${syncLine()}</p>
+    <div class="f"><label for="s-note">What changed? (optional)</label><textarea id="s-note" name="note" placeholder="e.g. Coach Phoebe now teaches Sunday mornings at Buangkok"></textarea></div>${errP}</div>${foot('Send request')}`, async (fd) => {
+    const r = await api('requestSync', { note: fd.get('note') });
+    return r.notified ? `Request sent. ${r.notified} person alerted on Telegram.` : 'Request saved. Nobody has sync alerts switched on yet (Settings → My Telegram alerts).';
   });
 }
 function dlgAttend(s) {
@@ -574,10 +636,16 @@ document.addEventListener('click', async (e) => {
   if (t.id === 'btnRefresh') { await load(); return toast('Up to date.'); }
   if (t.id === 'btnOut') { await sb.auth.signOut(); return location.reload(); }
   if (t.id === 'btnBotCheck') { bot = null; render(); return refreshBot(); }
+  if (t.id === 'btnSync') return dlgSync();
   if (t.id === 'btnConnect') { t.disabled = true; try { bot = await api('connectBot'); toast('Bot connected.'); } catch (x) { toast(x.message); } render(); return; }
 });
-document.addEventListener('change', (e) => {
+document.addEventListener('change', async (e) => {
   const id = e.target.id, v = e.target.value;
+  if (id === 'notifySync') {
+    const { error } = await sb.from('admins').update({ notify_sync: e.target.checked }).eq('email', me);
+    toast(error ? error.message : e.target.checked ? "You'll get timetable sync requests on Telegram." : 'Sync request alerts turned off.');
+    return load();
+  }
   if (id === 'fView') fView = v; else if (id === 'fCoach') fCoach = v; else if (id === 'fTrainee') fTrainee = v;
   else if (id === 'rBatch') repBatch = v; else if (id === 'rShow') repShow = v; else return;
   render();
