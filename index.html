@@ -313,6 +313,8 @@ function renderSchedule() {
     h += `<div class="alert bad"><span aria-hidden="true">🩺</span><div><b>Leave clash:</b> ${esc(s.coach.name)} has ${esc(l.reason)} on ${fmtDay(s.date)}. Attachment ${fmtT(s.start_time)}–${fmtT(s.end_time)} with ${esc(s.session_trainees.map((x) => tr(x.trainee_id).name).join(', '))} is affected.
       <div class="acts" style="margin-top:8px"><button class="btn sm primary" data-act="postpone" data-id="${s.id}">Postpone to ${fmtDay(nextFreeWeek(s.coach_id, s.date))} &amp; notify</button><button class="btn sm" data-act="resched" data-id="${s.id}">Pick another date</button><button class="btn sm danger" data-act="cancel" data-id="${s.id}">Cancel &amp; notify</button></div></div></div>`;
   });
+  const lastCheck = D.log.find((l) => l.action.startsWith('COACH CHECK'));
+  h += `<p class="muted" style="margin:0 0 4px;font-size:12.5px">Nightly coach check (7pm + 8pm, Digital Brain): ${lastCheck ? `last run ${new Date(lastCheck.created_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${esc(lastCheck.detail)}` : 'not run yet'}</p>`;
   const unl = D.trainees.filter((t) => t.active && !t.telegram_chat_id);
   if (unl.length) h += `<div class="alert">⚠️ <span><b>${esc(unl.map((t) => t.name).join(', '))}</b> ${unl.length > 1 ? "haven't" : "hasn't"} linked Telegram yet. Send their personal invite from the Trainees tab.</span></div>`;
   if (!D.coaches.length || !D.trainees.length) h += `<div class="alert">👋 <span>Start by adding coaches (Coaches &amp; leave tab) and trainees (Trainees tab). Then create the first session.</span></div>`;
@@ -332,6 +334,9 @@ function renderSchedule() {
           ${s.status === 'scheduled' && last ? `<div class="note info">Moved from ${fmtDay(last.from_date)} ${fmtT(last.from_start)} · ${esc(last.reason)}</div>` : ''}
           ${s.coach_remark ? `<div class="note">💬 ${esc(s.coach_remark)}</div>` : ''}
           ${needsLog ? `<div class="note" style="background:var(--warn-soft);color:var(--warn)">Attendance not logged yet</div>` : ''}
+          ${s.status === 'scheduled' && s.dbcheck_at ? (s.dbcheck_status === 'ok'
+            ? `<div class="meta" style="margin-top:6px;font-size:12px">✓ Coach confirmed in Digital Brain · checked ${new Date(s.dbcheck_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', hour: 'numeric', minute: '2-digit' })}</div>`
+            : s.dbcheck_status === 'away' ? '' : `<div class="note" style="background:var(--warn-soft);color:var(--warn)">Digital Brain check: ${({ partial: 'coach only teaches part of this slot', no_lessons: 'no lessons found in this slot', error: "couldn't be checked" })[s.dbcheck_status] || s.dbcheck_status}${s.dbcheck_detail ? ' · ' + esc(s.dbcheck_detail) : ''}</div>`) : ''}
         </div>
         <div class="side"><span class="pill p-${c ? 'clash' : s.status}">${c ? 'leave clash' : s.status}</span>
           ${s.status === 'scheduled' ? `<div class="acts">
@@ -451,6 +456,7 @@ function renderSettings() {
     <div class="box"><h3>My Telegram alerts</h3>
       <p style="margin:0 0 8px">${mine.telegram_chat_id ? '<span class="ok">● Linked</span> to your Telegram.' : 'Link your own Telegram to get alerts from the console.'}</p>
       ${link ? `<div class="acts" style="margin-bottom:10px"><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">${mine.telegram_chat_id ? 'Re-link' : 'Link my Telegram'}</a></div>` : '<p class="muted" style="font-size:13px">Connect the bot first.</p>'}
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" id="notifyLeave" ${mine.notify_leave ? 'checked' : ''}> Coach leave alerts (nightly Digital Brain check)</label>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="notifySync" ${mine.notify_sync ? 'checked' : ''}> Send me timetable sync requests</label>
     </div>`; })()}
   </div>`;
@@ -641,9 +647,10 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('change', async (e) => {
   const id = e.target.id, v = e.target.value;
-  if (id === 'notifySync') {
-    const { error } = await sb.from('admins').update({ notify_sync: e.target.checked }).eq('email', me);
-    toast(error ? error.message : e.target.checked ? "You'll get timetable sync requests on Telegram." : 'Sync request alerts turned off.');
+  if (id === 'notifySync' || id === 'notifyLeave') {
+    const col = id === 'notifySync' ? 'notify_sync' : 'notify_leave';
+    const { error } = await sb.from('admins').update({ [col]: e.target.checked }).eq('email', me);
+    toast(error ? error.message : e.target.checked ? "Turned on. Alerts come to your linked Telegram." : 'Alerts turned off.');
     return load();
   }
   if (id === 'fView') fView = v; else if (id === 'fCoach') fCoach = v; else if (id === 'fTrainee') fTrainee = v;
