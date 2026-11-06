@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Happy Fish Attachment Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f3f7f8; --surface:#fff; --surface-2:#eaf1f3; --line:#d5e1e5; --fg:#11262d; --muted:#5a7179;
+  --pool:#0b6e8a; --pool-ink:#fff; --pool-soft:#d6edf3; --lane:#e8b021;
+  --ok:#1f8a4c; --ok-soft:#dcf2e4; --warn:#b86e00; --warn-soft:#fbecd2; --bad:#c23b3b; --bad-soft:#f8dddd; --info:#3b62c2; --info-soft:#e0e7fa;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif; --body:"Figtree",ui-sans-serif,system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0c1a1f; --surface:#122329; --surface-2:#183037; --line:#25404a; --fg:#e3eef1; --muted:#8fa8b0;
+  --pool:#3fb3d3; --pool-ink:#05212b; --pool-soft:#123b48; --lane:#f0c24a;
+  --ok:#5ccf8b; --ok-soft:#133525; --warn:#f0a646; --warn-soft:#3a2a10; --bad:#f07b7b; --bad-soft:#3f1a1a; --info:#86a5f5; --info-soft:#1c2647;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--body);padding:20px max(16px,env(safe-area-inset-right)) 48px max(16px,env(safe-area-inset-left))}
+h1,h2,h3{font-family:var(--display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pool);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.wrap{max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.brand{display:flex;gap:12px;align-items:center}
+.mark{width:38px;height:38px;border-radius:50%;background:var(--pool);display:grid;place-items:center;flex:none}
+.brand h1{font-size:24px}
+.who{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;min-width:0;overflow:hidden}
+.head{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:10px;flex-wrap:wrap}
+.tab{border:0;background:transparent;padding:6px 12px;border-radius:7px;font-weight:600;color:var(--muted)}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.count{font-family:var(--mono);font-size:11px;background:var(--bad-soft);color:var(--bad);padding:1px 6px;border-radius:999px;margin-left:4px}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:8px;font-weight:600;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--pool)}
+.btn.primary{background:var(--pool);color:var(--pool-ink);border-color:var(--pool)}
+.btn.danger{color:var(--bad)}
+.btn.solid-danger{background:var(--bad);color:#fff;border-color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.acts{display:flex;gap:6px;flex-wrap:wrap}
+.panel{padding:4px 16px 18px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0}
+.filters select,.filters input{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
+.grow{flex:1}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.stats div{background:var(--surface);padding:10px 16px}
+.stats b{display:block;font-family:var(--display);font-size:22px;line-height:1.1}
+.stats span{font-size:12px;color:var(--muted)}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;background:var(--warn-soft);color:var(--warn);margin-top:8px;font-size:13px}
+.alert.bad{background:var(--bad-soft);color:var(--bad)}
+.alert .btn{color:var(--fg)}.alert .btn.primary{color:var(--pool-ink)}
+.day-h{display:flex;align-items:baseline;gap:8px;padding:14px 0 6px;border-bottom:2px solid var(--fg)}
+.day-h h3{font-size:16px}
+.today{font-size:11px;font-weight:700;background:var(--lane);color:#1d1600;padding:1px 7px;border-radius:999px}
+.sess{display:grid;grid-template-columns:90px minmax(0,1fr) auto;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);align-items:start}
+.sess.cancelled .what,.sess.cancelled .time{opacity:.55}
+.time{font-family:var(--mono);font-size:13px}.time small{display:block;color:var(--muted)}
+.what h4{margin:0 0 2px;font-size:14.5px}
+.meta{color:var(--muted);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+.dot{width:7px;height:7px;border-radius:50%}
+.d-pending{background:var(--warn)}.d-confirmed,.d-present{background:var(--ok)}.d-declined,.d-absent{background:var(--bad)}.d-none{background:var(--muted)}
+.note{margin-top:8px;font-size:12.5px;padding:6px 10px;border-radius:7px;background:var(--surface-2)}
+.note.bad{background:var(--bad-soft);color:var(--bad)}.note.info{background:var(--info-soft);color:var(--info)}
+.side{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.pill{font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.p-scheduled{background:var(--pool-soft);color:var(--pool)}.p-cancelled{background:var(--bad-soft);color:var(--bad)}.p-completed{background:var(--ok-soft);color:var(--ok)}.p-clash{background:var(--bad);color:#fff}.p-progress{background:var(--pool-soft);color:var(--pool)}
+@media (max-width:640px){.sess{grid-template-columns:64px minmax(0,1fr)}.side{grid-column:1/-1;align-items:flex-start}}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+td.num,th.num{text-align:right}
+.bar{height:8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;flex:1;min-width:90px}
+.bar i{display:block;height:100%;background:var(--pool)}
+.prog{display:flex;align-items:center;gap:8px;min-width:150px}
+.rname{display:flex;gap:8px;align-items:center;border:0;background:none;padding:0;text-align:left}
+.rname small{display:block;color:var(--muted);font-size:12px}
+.det>td{background:var(--bg);padding:6px 10px 12px}
+.det td,.det th{font-size:12.5px;padding:6px 8px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+.empty{padding:28px 0;color:var(--muted);text-align:center}
+.logrow{display:grid;grid-template-columns:130px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.logrow .t{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tag{font-size:11px;font-weight:700;margin-right:6px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:20px}
+.box{border:1px solid var(--line);border-radius:10px;padding:14px}
+.box h3{font-size:15px;margin-bottom:8px}
+.linkbox{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line);padding:4px 8px;border-radius:6px;word-break:break-all}
+.login{max-width:400px;margin:10vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:12px}
+dialog{border:1px solid var(--line);border-radius:14px;padding:0;background:var(--surface);color:var(--fg);width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+dialog::backdrop{background:rgba(5,20,26,.5)}
+.dlg{display:flex;flex-direction:column;max-height:calc(100vh - 34px);margin:0}
+.dlg header{padding:16px 18px 10px;border-bottom:1px solid var(--line)}
+.dlg header h2{font-size:19px}.dlg header p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.dlg .body{padding:14px 18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.dlg footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.f{display:flex;flex-direction:column;gap:4px}
+.f label,.f .lbl{font-size:12px;font-weight:600;color:var(--muted)}
+.f input:not([type=checkbox]):not([type=radio]),.f select,.f textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);width:100%;min-width:0;height:38px}
+.f textarea{height:auto;min-height:60px;resize:vertical}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:420px){.row2{grid-template-columns:1fr}}
+.checks{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden;max-height:260px;overflow-y:auto}
+.checks label{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-top:1px solid var(--line);cursor:pointer;font-size:13.5px;color:var(--fg);font-weight:500}
+.checks label:first-child{border-top:0}
+.checks label:has(input:checked){background:var(--pool-soft)}
+.checks input{width:16px;height:16px;margin:0;accent-color:var(--pool)}
+.checks .sub{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.hint{font-size:12.5px;padding:7px 10px;border-radius:7px;background:var(--info-soft);color:var(--info)}
+.err{color:var(--bad);font-size:13px;margin:0}
+.att{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg label{padding:4px 10px;font-size:12.5px;cursor:pointer;position:relative}
+.seg input{position:absolute;opacity:0}
+.seg label:has(input:checked){background:var(--pool-soft);color:var(--pool);font-weight:700}
+.seg label:has(input[value=absent]:checked){background:var(--bad-soft);color:var(--bad)}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;transition:.25s;z-index:50;max-width:calc(100vw - 32px)}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.spin{opacity:.6;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12c3-5 9-6 13-2l4-3v10l-4-3c-4 4-10 3-13-2z" fill="var(--pool-ink)"/></svg></div>
+      <div><h1>Attachment Log</h1><div class="muted">Happy Fish trainee attachments</div></div>
+    </div>
+    <div class="who" id="who" hidden><span id="whoEmail"></span><button class="btn sm" id="btnRefresh">↻ Refresh</button><button class="btn sm" id="btnOut">Sign out</button></div>
+  </header>
+
+  <section class="login" id="login" hidden>
+    <h2>Sign in</h2>
+    <p class="muted" style="margin:0">Enter your email. We'll send you a sign-in link.</p>
+    <form id="loginForm" class="f" style="gap:10px">
+      <label for="email">Email</label>
+      <input id="email" type="email" required autocomplete="email" placeholder="you@example.com">
+      <button class="btn primary" type="submit">Send sign-in link</button>
+      <p class="muted" id="loginMsg" style="margin:0"></p>
+    </form>
+  </section>
+
+  <section class="card" id="app" hidden>
+    <div class="head">
+      <div class="tabs" role="tablist">
+        <button class="tab" data-tab="schedule">Schedule</button>
+        <button class="tab" data-tab="reports">Reports</button>
+        <button class="tab" data-tab="trainees">Trainees</button>
+        <button class="tab" data-tab="coaches">Coaches &amp; leave</button>
+        <button class="tab" data-tab="log">Activity</button>
+        <button class="tab" data-tab="settings">Settings</button>
+      </div>
+      <button class="btn primary" id="btnNew">+ New session</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="panel" id="panel"></div>
+  </section>
+</div>
+<dialog id="dlg"><form method="dialog" class="dlg" id="dlgForm"></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+(() => {
+const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.HF_CONFIG;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const todaySG = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Singapore' }).format(new Date());
+const asUTC = (d) => new Date(d + 'T00:00:00Z');
+const addDays = (d, n) => { const x = asUTC(d); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const fmtDay = (d) => asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+const fmtDayLong = (d) => asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const fmtT = (t) => { let [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12; return h + (m ? ':' + String(m).padStart(2, '0') : '') + ap; };
+const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const hrs = (s) => Math.round((toMin(s.end_time) - toMin(s.start_time)) / 60 * 100) / 100;
+const when = (s) => `${fmtDay(s.date)} · ${fmtT(s.start_time)}–${fmtT(s.end_time)}`;
+const round2 = (n) => Math.round(n * 100) / 100;
+const short = (b) => String(b).replace(/ \(.*\)/, '');
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200); }
+
+const REASONS = ['Lightning / wet weather', 'Coach on MC or leave', 'Class cancelled (no students)', 'Pool closure or maintenance', 'Public holiday', 'Other'];
+const LEAVE = ['MC', 'Annual leave', 'Emergency leave', 'Other leave'];
+let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [] };
+let me = null, tab = 'schedule', bot = null;
+let fView = 'upcoming', fCoach = '', fTrainee = '', repBatch = '', repShow = 'all', repOpen = null;
+try { tab = localStorage.getItem('hf-tab') || 'schedule'; } catch (e) {}
+
+async function api(action, params = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/api`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.access_token, apikey: SUPABASE_ANON_KEY },
+    body: JSON.stringify({ action, ...params }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.');
+  return j;
+}
+const sentMsg = (r) => {
+  if (!r || r.sent === undefined) return '';
+  const bits = [`Telegram sent to ${r.sent}`];
+  if (r.skipped) bits.push(`${r.skipped} not on Telegram (call them)`);
+  if (r.failed) bits.push(`${r.failed} failed`);
+  return bits.join(', ') + '.';
+};
+
+async function load() {
+  const since = addDays(todaySG(), -400);
+  const q = await Promise.all([
+    sb.from('sessions').select('*, coach:coaches(name), session_trainees(trainee_id,response,attendance,hours_credited)').gte('date', since).order('date').order('start_time'),
+    sb.from('trainees').select('*').order('name'),
+    sb.from('coaches').select('*').order('name'),
+    sb.from('branches').select('*').eq('active', true).order('name'),
+    sb.from('coach_leave').select('*, coach:coaches(name)').gte('date', addDays(todaySG(), -30)).order('date'),
+    sb.from('audit_log').select('*').order('created_at', { ascending: false }).limit(300),
+    sb.from('session_changes').select('*').order('changed_at'),
+    sb.from('admins').select('*').order('email'),
+    sb.from('notifications').select('session_id,trainee_id,kind,status,error,created_at').neq('status', 'sent').gte('created_at', addDays(todaySG(), -30)),
+  ]);
+  const err = q.find((r) => r.error);
+  if (err) throw new Error(err.error.message);
+  [D.sessions, D.trainees, D.coaches, D.branches, D.leave, D.log, D.changes, D.admins, D.notif] = q.map((r) => r.data);
+  render();
+}
+const tr = (id) => D.trainees.find((t) => t.id === id) || { name: 'Unknown', required_hours: 24 };
+const leaveOn = (coachId, date) => D.leave.find((l) => l.coach_id === coachId && l.date === date);
+const clash = (s) => s.status === 'scheduled' && leaveOn(s.coach_id, s.date);
+const nextFreeWeek = (coachId, d) => { let n = addDays(d, 7); for (let i = 0; i < 8 && leaveOn(coachId, n); i++) n = addDays(n, 7); return n; };
+const hoursOf = (tid) => round2(D.sessions.filter((s) => s.status === 'completed').reduce((n, s) => n + s.session_trainees.filter((x) => x.trainee_id === tid).reduce((m, x) => m + Number(x.hours_credited), 0), 0));
+const upcomingFor = (tid) => D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.session_trainees.some((x) => x.trainee_id === tid));
+
+/* ---------- render ---------- */
+function render() {
+  const declined = D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG()).reduce((n, s) => n + s.session_trainees.filter((x) => x.response === 'declined').length, 0);
+  const clashes = D.sessions.filter((s) => clash(s) && s.date >= todaySG()).length;
+  const toLog = D.sessions.filter((s) => s.status === 'scheduled' && s.date < todaySG()).length;
+  const pending = D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG()).reduce((n, s) => n + s.session_trainees.filter((x) => x.response === 'pending').length, 0);
+  $('#stats').innerHTML = `
+    <div><b class="mono">${D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.date <= addDays(todaySG(), 6)).length}</b><span>Sessions in the next 7 days</span></div>
+    <div><b class="mono" style="color:${pending ? 'var(--warn)' : 'inherit'}">${pending}</b><span>Waiting for trainee reply</span></div>
+    <div><b class="mono" style="color:${declined + clashes ? 'var(--bad)' : 'inherit'}">${declined + clashes}</b><span>Needs follow-up (can't attend or coach leave)</span></div>
+    <div><b class="mono" style="color:${toLog ? 'var(--warn)' : 'inherit'}">${toLog}</b><span>Past sessions without attendance</span></div>`;
+  document.querySelectorAll('.tab').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.tab === tab));
+    if (b.dataset.tab === 'schedule') b.innerHTML = 'Schedule' + (declined + clashes + toLog ? `<span class="count">${declined + clashes + toLog}</span>` : '');
+  });
+  $('#panel').innerHTML = ({ schedule: renderSchedule, reports: renderReports, trainees: renderTrainees, coaches: renderCoaches, log: renderLog, settings: renderSettings })[tab]();
+}
+
+function chip(x, s) {
+  const t = tr(x.trainee_id);
+  let cls, label;
+  if (s.status === 'completed') { cls = 'd-' + (x.attendance || 'none'); label = x.attendance === 'present' ? `Present · ${Number(x.hours_credited)}h` : x.attendance === 'absent' ? 'Absent' : '–'; }
+  else if (s.status === 'cancelled') { cls = 'd-none'; label = 'Cancelled'; }
+  else { cls = 'd-' + x.response; label = { pending: 'No reply yet', confirmed: 'Confirmed', declined: "Can't attend" }[x.response]; }
+  const f = D.notif.find((n) => n.session_id === s.id && n.trainee_id === x.trainee_id && n.status === 'failed');
+  if (!t.telegram_chat_id && s.status === 'scheduled') label += ' · not on Telegram';
+  else if (f && s.status === 'scheduled') label += ' · message failed';
+  return `<span class="chip"><span class="dot ${cls}"></span><b style="font-weight:600">${esc(t.name)}</b><span class="muted">${label}</span></span>`;
+}
+
+function renderSchedule() {
+  const today = todaySG();
+  let list = D.sessions.slice();
+  if (fView === 'upcoming') list = list.filter((s) => s.date >= today || s.status === 'scheduled');
+  else if (fView === 'past') list = list.filter((s) => s.date < today).reverse();
+  if (fCoach) list = list.filter((s) => s.coach_id === fCoach);
+  if (fTrainee) list = list.filter((s) => s.session_trainees.some((x) => x.trainee_id === fTrainee));
+  let h = `<div class="filters">
+    <select id="fView" aria-label="Which sessions"><option value="upcoming" ${fView === 'upcoming' ? 'selected' : ''}>Upcoming + not yet logged</option><option value="past" ${fView === 'past' ? 'selected' : ''}>Past sessions</option><option value="all" ${fView === 'all' ? 'selected' : ''}>All</option></select>
+    <select id="fCoach" aria-label="Coach"><option value="">All coaches</option>${D.coaches.map((c) => `<option value="${c.id}" ${c.id === fCoach ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+    <select id="fTrainee" aria-label="Trainee"><option value="">All trainees</option>${D.trainees.map((t) => `<option value="${t.id}" ${t.id === fTrainee ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+  </div>`;
+  D.sessions.filter((s) => clash(s) && s.date >= today).forEach((s) => {
+    const l = leaveOn(s.coach_id, s.date);
+    h += `<div class="alert bad"><span aria-hidden="true">🩺</span><div><b>Leave clash:</b> ${esc(s.coach.name)} has ${esc(l.reason)} on ${fmtDay(s.date)}. Attachment ${fmtT(s.start_time)}–${fmtT(s.end_time)} with ${esc(s.session_trainees.map((x) => tr(x.trainee_id).name).join(', '))} is affected.
+      <div class="acts" style="margin-top:8px"><button class="btn sm primary" data-act="postpone" data-id="${s.id}">Postpone to ${fmtDay(nextFreeWeek(s.coach_id, s.date))} &amp; notify</button><button class="btn sm" data-act="resched" data-id="${s.id}">Pick another date</button><button class="btn sm danger" data-act="cancel" data-id="${s.id}">Cancel &amp; notify</button></div></div></div>`;
+  });
+  const unl = D.trainees.filter((t) => t.active && !t.telegram_chat_id);
+  if (unl.length) h += `<div class="alert">⚠️ <span><b>${esc(unl.map((t) => t.name).join(', '))}</b> ${unl.length > 1 ? "haven't" : "hasn't"} linked Telegram yet. Send their personal invite from the Trainees tab.</span></div>`;
+  if (!D.coaches.length || !D.trainees.length) h += `<div class="alert">👋 <span>Start by adding coaches (Coaches &amp; leave tab) and trainees (Trainees tab). Then create the first session.</span></div>`;
+  if (!list.length) return h + `<div class="empty">No sessions here yet.</div>`;
+  const days = [...new Set(list.map((s) => s.date))];
+  days.forEach((d) => {
+    const ss = list.filter((s) => s.date === d);
+    h += `<div class="day-h"><h3>${fmtDayLong(d)}</h3>${d === today ? '<span class="today">TODAY</span>' : ''}</div>`;
+    ss.forEach((s) => {
+      const c = clash(s), last = D.changes.filter((x) => x.session_id === s.id && !x.trainee_id).pop();
+      const needsLog = s.status === 'scheduled' && s.date < today;
+      h += `<div class="sess ${s.status}">
+        <div class="time">${fmtT(s.start_time)}<small>${fmtT(s.end_time)} · ${hrs(s)}h</small></div>
+        <div class="what"><h4>${esc(s.coach.name)}</h4><div class="meta">📍 ${esc(s.branch)}${s.classes_note ? ' · ' + esc(s.classes_note) : ''}</div>
+          <div class="chips">${s.session_trainees.map((x) => chip(x, s)).join('') || '<span class="muted">No trainees</span>'}</div>
+          ${s.status === 'cancelled' ? `<div class="note bad">Cancelled: ${esc(s.cancel_reason)}${s.note ? ' · ' + esc(s.note) : ''}</div>` : ''}
+          ${s.status === 'scheduled' && last ? `<div class="note info">Moved from ${fmtDay(last.from_date)} ${fmtT(last.from_start)} · ${esc(last.reason)}</div>` : ''}
+          ${s.coach_remark ? `<div class="note">💬 ${esc(s.coach_remark)}</div>` : ''}
+          ${needsLog ? `<div class="note" style="background:var(--warn-soft);color:var(--warn)">Attendance not logged yet</div>` : ''}
+        </div>
+        <div class="side"><span class="pill p-${c ? 'clash' : s.status}">${c ? 'leave clash' : s.status}</span>
+          ${s.status === 'scheduled' ? `<div class="acts">
+            <button class="btn sm ${needsLog ? 'primary' : ''}" data-act="attend" data-id="${s.id}" ${s.date > today ? 'disabled title="Available from the day of the session"' : ''}>Log attendance</button>
+            <button class="btn sm" data-act="resched" data-id="${s.id}">Reschedule</button>
+            <button class="btn sm danger" data-act="cancel" data-id="${s.id}">Cancel</button></div>` : ''}
+        </div></div>`;
+    });
+  });
+  return h;
+}
+
+/* ---------- reports ---------- */
+function reportRows() {
+  return D.trainees.filter((t) => !repBatch || t.batch === repBatch).map((t) => {
+    const recs = D.sessions.filter((s) => s.status === 'completed').flatMap((s) => s.session_trainees.filter((x) => x.trainee_id === t.id && x.attendance).map((x) => ({ s, x })));
+    let run = 0, doneOn = null;
+    const req = Number(t.required_hours);
+    recs.forEach((r) => { run += Number(r.x.hours_credited); r.cum = round2(run); if (!doneOn && run >= req) doneOn = r.s.date; });
+    const done = round2(run);
+    return { t, recs, done, req, complete: done >= req, doneOn, left: Math.max(0, round2(req - done)),
+      att: recs.filter((r) => r.x.attendance === 'present').length, abs: recs.filter((r) => r.x.attendance === 'absent').length,
+      last: [...recs].reverse().find((r) => r.x.attendance === 'present'), next: upcomingFor(t.id)[0] };
+  }).filter((r) => repShow === 'all' || (repShow === 'done' ? r.complete : !r.complete));
+}
+const csvCell = (v) => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+function reportCSV(kind) {
+  const rows = reportRows();
+  const out = kind === 'summary'
+    ? [['Trainee', 'Batch', 'Hours logged', 'Hours required', 'Hours remaining', 'Sessions attended', 'Absences', 'Last attended', 'Status', 'Completed on'],
+      ...rows.map((r) => [r.t.name, r.t.batch, r.done, r.req, r.left, r.att, r.abs, r.last ? r.last.s.date : '', r.complete ? 'Completed' : 'In progress', r.doneOn || ''])]
+    : [['Trainee', 'Batch', 'Date', 'Senior coach', 'Branch', 'From', 'To', 'Attendance', 'Hours credited', 'Running total'],
+      ...rows.flatMap((r) => r.recs.map((z) => [r.t.name, r.t.batch, z.s.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum]))];
+  return out.map((r) => r.map(csvCell).join(',')).join('\n');
+}
+function renderReports() {
+  const rows = reportRows(), batches = [...new Set(D.trainees.map((t) => t.batch).filter(Boolean))];
+  const nDone = rows.filter((r) => r.complete).length, noBook = rows.filter((r) => !r.complete && !r.next && r.t.active).length;
+  let h = `<div class="filters"><span class="eyebrow">Report</span>
+    <select id="rBatch" aria-label="Batch"><option value="">All batches</option>${batches.map((b) => `<option ${b === repBatch ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>
+    <select id="rShow" aria-label="Status"><option value="all">All trainees</option><option value="open" ${repShow === 'open' ? 'selected' : ''}>Still in progress</option><option value="done" ${repShow === 'done' ? 'selected' : ''}>Completed 24h</option></select>
+    <span class="grow"></span><button class="btn sm" data-csv="summary">⬇ Summary (CSV)</button><button class="btn sm" data-csv="sessions">⬇ Session log (CSV)</button></div>
+    <p class="muted" style="margin:0 0 10px">${rows.length} trainees · <b class="ok">${nDone} completed</b> · ${rows.length - nDone} in progress${noBook ? ` · <b class="warn">${noBook} with nothing booked</b>` : ''}</p>`;
+  if (!rows.length) return h + `<div class="empty">No trainees match.</div>`;
+  h += `<div class="tbl"><table><thead><tr><th>Trainee</th><th>Progress</th><th class="num">Left</th><th class="num">Attended</th><th class="num">Absent</th><th>Last attended</th><th>Status</th></tr></thead><tbody>`;
+  rows.forEach((r) => {
+    const open = repOpen === r.t.id;
+    h += `<tr><td><button class="rname" data-rep="${r.t.id}" aria-expanded="${open}"><span class="muted">${open ? '▾' : '▸'}</span><span><b>${esc(r.t.name)}</b><small>${esc(r.t.batch || '')}</small></span></button></td>
+      <td><div class="prog"><div class="bar"><i style="width:${Math.min(100, r.done / r.req * 100)}%;${r.complete ? 'background:var(--ok)' : ''}"></i></div><span class="mono">${r.done}/${r.req}h</span></div></td>
+      <td class="num mono">${r.left ? r.left + 'h' : '–'}</td><td class="num mono">${r.att}</td><td class="num mono ${r.abs ? 'bad' : ''}">${r.abs}</td>
+      <td class="mono">${r.last ? fmtDay(r.last.s.date) : '–'}</td>
+      <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
+    if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th></tr></thead><tbody>${r.recs.map((z) => `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
+  });
+  return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Hours come only from logged attendance: present = full slot, absent = 0. Cancelled and postponed sessions don't count.</p>`;
+}
+
+/* ---------- trainees ---------- */
+const linkFor = (t) => bot?.username ? `https://t.me/${bot.username}?start=${t.link_code}` : null;
+function renderTrainees() {
+  let h = `<div class="filters"><button class="btn primary sm" data-add="trainee">+ Add trainee</button><span class="grow"></span>${bot?.username ? `<span class="muted">Bot: @${esc(bot.username)}</span>` : `<span class="warn">Connect the bot in Settings to get trainee invites.</span>`}</div>`;
+  if (!D.trainees.length) return h + `<div class="empty">No trainees yet. Add your first trainee.</div>`;
+  h += `<div class="tbl"><table><thead><tr><th>Trainee</th><th>Telegram</th><th>Personal invite</th><th class="num">Hours</th><th></th></tr></thead><tbody>`;
+  D.trainees.forEach((t) => {
+    const link = linkFor(t);
+    h += `<tr style="${t.active ? '' : 'opacity:.5'}"><td><b>${esc(t.name)}</b><div class="muted" style="font-size:12px">${esc(t.batch || '')}${t.phone ? ' · ' + esc(t.phone) : ''}</div></td>
+      <td>${t.telegram_chat_id ? `<span class="ok">● Linked</span>${t.telegram_username ? `<div class="muted mono" style="font-size:12px">@${esc(t.telegram_username)}</div>` : ''}` : '<span class="warn">● Not linked</span>'}</td>
+      <td>${link ? `<div class="acts"><span class="linkbox">${esc(link)}</span><button class="btn sm" data-copy="${t.id}">Copy invite</button></div>` : '<span class="muted">–</span>'}</td>
+      <td class="num mono">${hoursOf(t.id)}/${Number(t.required_hours)}h</td>
+      <td><div class="acts"><button class="btn sm" data-edit="trainee" data-id="${t.id}">Edit</button></div></td></tr>`;
+  });
+  return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Send each trainee their invite. When they tap Start in Telegram, they're linked and get all alerts.</p>`;
+}
+
+/* ---------- coaches & leave ---------- */
+function renderCoaches() {
+  const today = todaySG();
+  const lv = D.leave.filter((l) => l.date >= today);
+  return `<div class="two" style="margin-top:12px">
+    <div class="box"><h3>Senior coaches</h3>
+      <div class="filters" style="padding-top:0"><button class="btn primary sm" data-add="coach">+ Add coach</button></div>
+      ${D.coaches.length ? `<table><tbody>${D.coaches.map((c) => `<tr style="${c.active ? '' : 'opacity:.5'}"><td><b>${esc(c.name)}</b>${c.active ? '' : ' <span class="muted">(inactive)</span>'}</td><td class="num"><button class="btn sm" data-edit="coach" data-id="${c.id}">Edit</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">No coaches yet.</div>'}
+    </div>
+    <div class="box"><h3>Coach leave</h3>
+      <p class="muted" style="margin:0 0 8px;font-size:13px">Add leave when a coach submits a relief request. Any attachment that day is flagged on the Schedule tab so you can postpone it a week.</p>
+      <div class="filters" style="padding-top:0"><button class="btn primary sm" data-add="leave" ${D.coaches.length ? '' : 'disabled'}>+ Add leave</button></div>
+      ${lv.length ? `<table><tbody>${lv.map((l) => { const n = D.sessions.filter((s) => s.status === 'scheduled' && s.coach_id === l.coach_id && s.date === l.date).length; return `<tr><td class="mono">${fmtDay(l.date)}</td><td><b>${esc(l.coach?.name)}</b> · ${esc(l.reason)}${n ? ` <span class="pill p-clash">${n} clash</span>` : ''}</td><td class="num"><button class="btn sm danger" data-delleave="${l.id}">Remove</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">No upcoming leave.</div>'}
+    </div></div>`;
+}
+
+function renderLog() {
+  if (!D.log.length) return `<div class="empty">Nothing logged yet.</div>`;
+  const col = (a) => /CANCEL|CAN'T|CLASH|ERROR/.test(a) ? 'var(--bad)' : /POSTPONE|RESCHED/.test(a) ? 'var(--info)' : /ATTEND|CONFIRM|LINKED/.test(a) ? 'var(--ok)' : 'var(--pool)';
+  return `<div style="margin-top:8px">${D.log.map((l) => `<div class="logrow"><span class="t">${new Date(l.created_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span><span><span class="tag" style="color:${col(l.action)}">${esc(l.action)}</span>${esc(l.detail)} <span class="muted" style="font-size:12px">· ${esc(l.actor)}</span></span></div>`).join('')}</div>`;
+}
+
+function renderSettings() {
+  const b = bot;
+  return `<div class="two" style="margin-top:12px">
+    <div class="box"><h3>Telegram bot</h3>
+      ${!b ? '<p class="muted">Checking…</p>' : b.ok ? `<p style="margin:0 0 6px">Bot: <b>@${esc(b.username)}</b></p>
+        <p style="margin:0 0 6px">${b.webhook ? '<span class="ok">● Connected</span>' : '<span class="warn">● Not connected yet. Press Connect bot.</span>'}${b.lastError ? `<br><span class="bad">Last error: ${esc(b.lastError)}</span>` : ''}</p>`
+        : `<p class="bad" style="margin:0 0 6px">${esc(b.error)}</p><p class="muted" style="font-size:13px">Set the bot token in Supabase first (see the setup guide), then press Connect bot.</p>`}
+      <div class="acts"><button class="btn primary sm" id="btnConnect">Connect bot</button><button class="btn sm" id="btnBotCheck">Check again</button></div>
+    </div>
+    <div class="box"><h3>Who can use this console</h3>
+      <table><tbody>${D.admins.map((a) => `<tr><td>${esc(a.email)}</td><td class="num">${a.email === me ? '<span class="muted">you</span>' : `<button class="btn sm danger" data-deladmin="${esc(a.email)}">Remove</button>`}</td></tr>`).join('')}</tbody></table>
+      <form id="adminForm" class="acts" style="margin-top:10px"><input id="adminEmail" type="email" required placeholder="assistant@email.com" aria-label="Email to add" style="flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg)"><button class="btn sm primary">Add</button></form>
+    </div></div>`;
+}
+async function refreshBot() { try { bot = await api('botStatus'); } catch (e) { bot = { ok: false, error: e.message }; } render(); }
+
+/* ---------- dialogs ---------- */
+const dlg = $('#dlg'), form = $('#dlgForm');
+let onOk = null;
+function open(html, ok) { form.innerHTML = html; onOk = ok; dlg.showModal(); }
+const errP = '<p class="err" hidden></p>';
+form.addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'ok') return;
+  e.preventDefault();
+  const p = form.querySelector('.err');
+  try {
+    form.classList.add('spin');
+    const msg = await onOk(new FormData(form));
+    dlg.close(); if (msg) toast(msg); await load();
+  } catch (err) { if (p) { p.textContent = err.message; p.hidden = false; } else toast(err.message); }
+  finally { form.classList.remove('spin'); }
+});
+const opts = (arr, sel, val = (x) => x, lab = (x) => x) => arr.map((x) => `<option value="${esc(val(x))}" ${val(x) === sel ? 'selected' : ''}>${esc(lab(x))}</option>`).join('');
+const foot = (label, cls = 'primary') => `<footer><button class="btn" value="x" formnovalidate>Close</button><button class="btn ${cls}" value="ok">${label}</button></footer>`;
+
+function dlgNew() {
+  const coaches = D.coaches.filter((c) => c.active), trainees = D.trainees.filter((t) => t.active);
+  if (!coaches.length || !trainees.length) { toast('Add at least one coach and one trainee first.'); return; }
+  open(`<header><h2>New attachment session</h2><p>Trainees you tick get a Telegram message with Confirm and Can't make it buttons.</p></header>
+  <div class="body">
+    <div class="f"><label for="n-branch">Branch</label><select id="n-branch" name="branch">${opts(D.branches, '', (b) => b.name, (b) => b.name)}</select></div>
+    <div class="row2"><div class="f"><label for="n-coach">Senior coach</label><select id="n-coach" name="coach_id">${opts(coaches, '', (c) => c.id, (c) => c.name)}</select></div>
+      <div class="f"><label for="n-date">Date</label><input id="n-date" type="date" name="date" required min="${todaySG()}" value="${addDays(todaySG(), 1)}"></div></div>
+    <div class="row2"><div class="f"><label for="n-start">From</label><input id="n-start" type="time" name="start_time" required value="09:00"></div>
+      <div class="f"><label for="n-end">To</label><input id="n-end" type="time" name="end_time" required value="12:00"></div></div>
+    <div class="f"><label for="n-classes">Classes (optional, from Digital Brain)</label><input id="n-classes" name="classes_note" placeholder="e.g. 2.2 Toddler Beginner, 1.2 Baby Beginner"></div>
+    <div class="hint" id="n-hint"></div>
+    <div class="f"><span class="lbl">Trainees (max 2)</span><div class="checks">${trainees.map((t) => `<label><input type="checkbox" name="trainee_ids" value="${t.id}"><span>${esc(t.name)}${t.telegram_chat_id ? '' : ' <span class="warn" style="font-size:11.5px">· not on Telegram</span>'}</span><span class="sub">${hoursOf(t.id)} / ${Number(t.required_hours)}h</span></label>`).join('')}</div></div>
+    ${errP}</div>${foot('Create &amp; notify')}`, async (fd) => {
+    const ids = fd.getAll('trainee_ids');
+    if (!ids.length) throw new Error('Pick at least one trainee.');
+    if (ids.length > 2) throw new Error('Max 2 trainees per session.');
+    const r = await api('createSession', { branch: fd.get('branch'), coach_id: fd.get('coach_id'), date: fd.get('date'), start_time: fd.get('start_time'), end_time: fd.get('end_time'), classes_note: fd.get('classes_note'), trainee_ids: ids });
+    return 'Session created. ' + sentMsg(r);
+  });
+  const upd = () => {
+    const c = $('#n-coach').value, d = $('#n-date').value, s = $('#n-start').value, e = $('#n-end').value;
+    const l = d && leaveOn(c, d);
+    $('#n-hint').innerHTML = l ? `⚠️ This coach has ${esc(l.reason)} on ${fmtDay(d)}. Pick another date.` : (s && e && e > s ? `Counts as <b>${hrs({ start_time: s, end_time: e })}h</b> toward 24h for each trainee who attends.` : 'End time must be after start time.');
+  };
+  ['n-coach', 'n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', upd)); upd();
+}
+function dlgResched(s) {
+  open(`<header><h2>Reschedule</h2><p>${esc(s.coach.name)} · currently ${when(s)}</p></header><div class="body">
+    <div class="f"><label for="r-date">New date</label><input id="r-date" type="date" name="date" required min="${todaySG()}" value="${s.date}"></div>
+    <div class="row2"><div class="f"><label for="r-start">From</label><input id="r-start" type="time" name="start_time" required value="${s.start_time.slice(0, 5)}"></div><div class="f"><label for="r-end">To</label><input id="r-end" type="time" name="end_time" required value="${s.end_time.slice(0, 5)}"></div></div>
+    <div class="f"><label for="r-reason">Reason</label><select id="r-reason" name="reason">${opts(['Coach on MC or leave', 'Coach schedule change', 'Class timing changed', 'Lane / pool availability', 'Lightning / wet weather', 'Other'])}</select></div>
+    <div class="f"><label for="r-note">Note to trainees (optional)</label><textarea id="r-note" name="note"></textarea></div>
+    <p class="muted" style="margin:0;font-size:13px">Trainees will be asked to confirm again.</p>${errP}</div>${foot('Reschedule &amp; notify')}`, async (fd) => {
+    if (fd.get('date') === s.date && fd.get('start_time') === s.start_time.slice(0, 5) && fd.get('end_time') === s.end_time.slice(0, 5)) throw new Error('Pick a different date or time.');
+    const r = await api('rescheduleSession', { id: s.id, date: fd.get('date'), start_time: fd.get('start_time'), end_time: fd.get('end_time'), reason: fd.get('reason'), note: fd.get('note') });
+    return 'Rescheduled. ' + sentMsg(r);
+  });
+}
+function dlgPostpone(s) {
+  const l = leaveOn(s.coach_id, s.date), nd = nextFreeWeek(s.coach_id, s.date), skipped = Math.round((asUTC(nd) - asUTC(s.date)) / 864e5 / 7) - 1;
+  const unl = s.session_trainees.map((x) => tr(x.trainee_id)).filter((t) => !t.telegram_chat_id);
+  open(`<header><h2>Postpone attachment</h2><p>${esc(s.coach.name)} has ${esc(l?.reason || 'leave')} on ${fmtDayLong(s.date)}.</p></header><div class="body">
+    <p style="margin:0">Move to <b>${fmtDayLong(nd)}</b>, ${fmtT(s.start_time)}–${fmtT(s.end_time)} (same day and time).</p>
+    <div class="hint">${skipped ? `${esc(s.coach.name)} also has leave the week after, so this skips ${skipped} more week${skipped > 1 ? 's' : ''}.` : `${esc(s.coach.name)} has no leave recorded on ${fmtDay(nd)}.`} Each trainee confirms in Telegram; if they can't make it, the bot offers them the following week.</div>
+    ${unl.length ? `<div class="alert">⚠️ <span>${esc(unl.map((t) => t.name).join(', '))} isn't on Telegram. Call them to confirm.</span></div>` : ''}${errP}</div>${foot('Postpone &amp; notify')}`, async () => {
+    const r = await api('postponeSession', { id: s.id });
+    return `Postponed to ${fmtDay(r.date)}. ` + sentMsg(r);
+  });
+}
+function dlgCancel(s) {
+  const init = clash(s) ? REASONS[1] : REASONS[0];
+  open(`<header><h2>Cancel session</h2><p>${esc(s.coach.name)} · ${when(s)}</p></header><div class="body">
+    <div class="f"><label for="c-reason">Reason</label><select id="c-reason" name="reason">${opts(REASONS, init)}</select></div>
+    <div class="f"><label for="c-note">Note to trainees (optional)</label><textarea id="c-note" name="note"></textarea></div>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="notify" checked> Send Telegram alert to trainees</label>${errP}</div>${foot('Cancel session', 'solid-danger')}`, async (fd) => {
+    const r = await api('cancelSession', { id: s.id, reason: fd.get('reason'), note: fd.get('note'), notify: !!fd.get('notify') });
+    return 'Cancelled. ' + sentMsg(r);
+  });
+}
+function dlgAttend(s) {
+  open(`<header><h2>Log attendance</h2><p>${esc(s.coach.name)} · ${when(s)} · ${hrs(s)}h</p></header><div class="body">
+    <div>${s.session_trainees.map((x) => { const t = tr(x.trainee_id); return `<div class="att"><span><b>${esc(t.name)}</b> <span class="muted mono" style="font-size:12px">${hoursOf(t.id)}/${Number(t.required_hours)}h</span></span><span class="seg"><label><input type="radio" name="a-${t.id}" value="present" checked>Present</label><label><input type="radio" name="a-${t.id}" value="absent">Absent</label></span></div>`; }).join('')}</div>
+    <div class="f"><label for="a-remark">Coach remark (sent to trainees, optional)</label><textarea id="a-remark" name="remark"></textarea></div>${errP}</div>${foot('Save &amp; notify')}`, async (fd) => {
+    const attendance = {}; s.session_trainees.forEach((x) => { attendance[x.trainee_id] = fd.get('a-' + x.trainee_id); });
+    await api('logAttendance', { id: s.id, attendance, remark: fd.get('remark') });
+    return 'Attendance saved. Hours updated.';
+  });
+}
+function dlgTrainee(t) {
+  open(`<header><h2>${t ? 'Edit trainee' : 'Add trainee'}</h2></header><div class="body">
+    <div class="f"><label for="t-name">Full name</label><input id="t-name" name="name" required value="${esc(t?.name || '')}"></div>
+    <div class="row2"><div class="f"><label for="t-batch">Batch</label><input id="t-batch" name="batch" placeholder="e.g. Batch 45" value="${esc(t?.batch || '')}"></div>
+      <div class="f"><label for="t-phone">Phone (optional)</label><input id="t-phone" name="phone" value="${esc(t?.phone || '')}"></div></div>
+    <div class="row2"><div class="f"><label for="t-req">Required hours</label><input id="t-req" name="required_hours" type="number" min="1" step="0.5" value="${t ? Number(t.required_hours) : 24}"></div>
+      ${t ? `<div class="f"><label for="t-active">Status</label><select id="t-active" name="active"><option value="1">Active</option><option value="0" ${t.active ? '' : 'selected'}>Inactive</option></select></div>` : ''}</div>
+    ${errP}</div>${foot(t ? 'Save' : 'Add trainee')}`, async (fd) => {
+    const row = { name: fd.get('name').trim(), batch: fd.get('batch').trim() || null, phone: fd.get('phone').trim() || null, required_hours: Number(fd.get('required_hours')) || 24 };
+    if (t) row.active = fd.get('active') === '1';
+    const { error } = t ? await sb.from('trainees').update(row).eq('id', t.id) : await sb.from('trainees').insert(row);
+    if (error) throw new Error(error.message);
+    return t ? 'Saved.' : `${row.name} added. Copy their invite from the list.`;
+  });
+}
+function dlgCoach(c) {
+  open(`<header><h2>${c ? 'Edit coach' : 'Add senior coach'}</h2></header><div class="body">
+    <div class="f"><label for="c-name">Name (as in Digital Brain)</label><input id="c-name" name="name" required value="${esc(c?.name || '')}" placeholder="e.g. Phoebe - Lim Guan Keng"></div>
+    ${c ? `<div class="f"><label for="c-active">Status</label><select id="c-active" name="active"><option value="1">Active</option><option value="0" ${c.active ? '' : 'selected'}>Inactive</option></select></div>` : ''}${errP}</div>${foot(c ? 'Save' : 'Add coach')}`, async (fd) => {
+    const row = { name: fd.get('name').trim() }; if (c) row.active = fd.get('active') === '1';
+    const { error } = c ? await sb.from('coaches').update(row).eq('id', c.id) : await sb.from('coaches').insert(row);
+    if (error) throw new Error(error.message.includes('duplicate') ? 'That coach already exists.' : error.message);
+    return 'Saved.';
+  });
+}
+function dlgLeave() {
+  open(`<header><h2>Add coach leave</h2><p>From a relief request. Attachments that day get flagged.</p></header><div class="body">
+    <div class="row2"><div class="f"><label for="l-coach">Coach</label><select id="l-coach" name="coach_id">${opts(D.coaches.filter((c) => c.active), '', (c) => c.id, (c) => c.name)}</select></div>
+      <div class="f"><label for="l-date">Date</label><input id="l-date" type="date" name="date" required min="${todaySG()}" value="${todaySG()}"></div></div>
+    <div class="f"><label for="l-reason">Reason</label><select id="l-reason" name="reason">${opts(LEAVE)}</select></div>${errP}</div>${foot('Add leave')}`, async (fd) => {
+    const r = await api('addLeave', { coach_id: fd.get('coach_id'), date: fd.get('date'), reason: fd.get('reason') });
+    if (r.clashes) { tab = 'schedule'; return `Leave added. ${r.clashes} attachment session(s) clash. See the Schedule tab.`; }
+    return 'Leave added. No attachments affected.';
+  });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('button'); if (!t || t.closest('dialog')) return;
+  if (t.classList.contains('tab')) { tab = t.dataset.tab; try { localStorage.setItem('hf-tab', tab); } catch (x) {} render(); return; }
+  const s = t.dataset.id && D.sessions.find((x) => x.id === t.dataset.id);
+  if (t.dataset.act) return ({ attend: dlgAttend, resched: dlgResched, cancel: dlgCancel, postpone: dlgPostpone })[t.dataset.act](s);
+  if (t.dataset.add) return ({ trainee: () => dlgTrainee(), coach: () => dlgCoach(), leave: dlgLeave })[t.dataset.add]();
+  if (t.dataset.edit === 'trainee') return dlgTrainee(D.trainees.find((x) => x.id === t.dataset.id));
+  if (t.dataset.edit === 'coach') return dlgCoach(D.coaches.find((x) => x.id === t.dataset.id));
+  if (t.dataset.rep) { repOpen = repOpen === t.dataset.rep ? null : t.dataset.rep; return render(); }
+  if (t.dataset.csv) {
+    const blob = new Blob(['﻿' + reportCSV(t.dataset.csv)], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `attachment-${t.dataset.csv}-${todaySG()}.csv`; a.click(); return;
+  }
+  if (t.dataset.copy) {
+    const tt = D.trainees.find((x) => x.id === t.dataset.copy);
+    const txt = `Hi ${tt.name.split(' ')[0]}, please tap this link and press Start to get your Happy Fish attachment schedule and alerts on Telegram:\n${linkFor(tt)}`;
+    try { await navigator.clipboard.writeText(txt); toast('Invite copied. Paste it into WhatsApp or Telegram.'); } catch (x) { prompt('Copy this invite:', txt); }
+    return;
+  }
+  if (t.dataset.delleave) { if (!confirm('Remove this leave?')) return; try { await api('removeLeave', { id: t.dataset.delleave }); toast('Leave removed.'); await load(); } catch (x) { toast(x.message); } return; }
+  if (t.dataset.deladmin) { if (!confirm(`Remove ${t.dataset.deladmin}?`)) return; await sb.from('admins').delete().eq('email', t.dataset.deladmin); return load(); }
+  if (t.id === 'btnNew') return dlgNew();
+  if (t.id === 'btnRefresh') { await load(); return toast('Up to date.'); }
+  if (t.id === 'btnOut') { await sb.auth.signOut(); return location.reload(); }
+  if (t.id === 'btnBotCheck') { bot = null; render(); return refreshBot(); }
+  if (t.id === 'btnConnect') { t.disabled = true; try { bot = await api('connectBot'); toast('Bot connected.'); } catch (x) { toast(x.message); } render(); return; }
+});
+document.addEventListener('change', (e) => {
+  const id = e.target.id, v = e.target.value;
+  if (id === 'fView') fView = v; else if (id === 'fCoach') fCoach = v; else if (id === 'fTrainee') fTrainee = v;
+  else if (id === 'rBatch') repBatch = v; else if (id === 'rShow') repShow = v; else return;
+  render();
+});
+document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'adminForm') {
+    e.preventDefault();
+    const { error } = await sb.from('admins').insert({ email: $('#adminEmail').value.trim().toLowerCase() });
+    if (error) return toast(error.message);
+    toast('Added. They can now sign in with that email.'); load();
+  }
+});
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithOtp({ email: $('#email').value.trim(), options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } });
+  $('#loginMsg').textContent = error ? error.message : 'Check your email and tap the sign-in link.';
+});
+
+/* ---------- start ---------- */
+let started = false;
+async function start() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { $('#login').hidden = false; return; }
+  if (started) return; started = true;
+  me = session.user.email.toLowerCase();
+  const { data: ok } = await sb.rpc('is_admin');
+  if (!ok) { started = false; $('#login').hidden = false; $('#loginMsg').textContent = `${me} isn't allowed to use this console. Ask an admin to add you.`; await sb.auth.signOut(); return; }
+  $('#who').hidden = false; $('#whoEmail').textContent = me; $('#app').hidden = false; $('#login').hidden = true;
+  await load(); refreshBot();
+  setInterval(() => { if (!dlg.open && document.visibilityState === 'visible') load().catch(() => {}); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !dlg.open) load().catch(() => {}); });
+}
+sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN') start(); });
+start().catch((e) => toast(e.message));
+})();
+</script>
+</body>
+</html>
