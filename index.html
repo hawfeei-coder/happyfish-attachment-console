@@ -131,6 +131,12 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;transition:.25s;z-index:50;max-width:calc(100vw - 32px)}
 .toast.show{opacity:1;transform:translateX(-50%)}
 .spin{opacity:.6;pointer-events:none}
+.invite{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:480px){.invite{grid-template-columns:1fr}}
+.qr{background:#fff;padding:10px;border-radius:10px;width:200px;height:200px;margin:0 auto}
+.qr img,.qr canvas{display:block}
+.invite-acts{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:0}
+.invite-acts .btn{white-space:normal;justify-content:center;text-align:center}
 .slots{display:flex;flex-direction:column;gap:6px}
 .slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px}
 .slot:hover,.slot.on{border-color:var(--pool);background:var(--pool-soft)}
@@ -181,6 +187,7 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 (() => {
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.HF_CONFIG;
@@ -405,7 +412,7 @@ function renderTrainees() {
     const link = linkFor(t);
     h += `<tr style="${t.active ? '' : 'opacity:.5'}"><td><b>${esc(t.name)}</b><div class="muted" style="font-size:12px">${esc(t.batch || '')}${t.phone ? ' · ' + esc(t.phone) : ''}</div></td>
       <td>${t.telegram_chat_id ? `<span class="ok">● Linked</span>${t.telegram_username ? `<div class="muted mono" style="font-size:12px">@${esc(t.telegram_username)}</div>` : ''}` : '<span class="warn">● Not linked</span>'}</td>
-      <td>${link ? `<div class="acts"><span class="linkbox">${esc(link)}</span><button class="btn sm" data-copy="${t.id}">Copy invite</button></div>` : '<span class="muted">–</span>'}</td>
+      <td>${!link ? '<span class="muted">–</span>' : t.telegram_chat_id ? `<button class="btn sm" data-invite="${t.id}">Re-send invite</button>` : `<button class="btn sm primary" data-invite="${t.id}">Invite to Telegram</button>`}</td>
       <td class="num mono">${hoursOf(t.id)}/${Number(t.required_hours)}h</td>
       <td><div class="acts"><button class="btn sm" data-edit="trainee" data-id="${t.id}">Edit</button></div></td></tr>`;
   });
@@ -467,7 +474,7 @@ async function refreshBot() { try { bot = await api('botStatus'); } catch (e) { 
 
 /* ---------- dialogs ---------- */
 const dlg = $('#dlg'), form = $('#dlgForm');
-let onOk = null;
+let onOk = null, afterSave = null;
 function open(html, ok) { form.innerHTML = html; onOk = ok; dlg.showModal(); }
 const errP = '<p class="err" hidden></p>';
 form.addEventListener('submit', async (e) => {
@@ -478,6 +485,7 @@ form.addEventListener('submit', async (e) => {
     form.classList.add('spin');
     const msg = await onOk(new FormData(form));
     dlg.close(); if (msg) toast(msg); await load();
+    if (afterSave) { const f = afterSave; afterSave = null; f(); }
   } catch (err) { if (p) { p.textContent = err.message; p.hidden = false; } else toast(err.message); }
   finally { form.classList.remove('spin'); }
 });
@@ -591,10 +599,41 @@ function dlgTrainee(t) {
     ${errP}</div>${foot(t ? 'Save' : 'Add trainee')}`, async (fd) => {
     const row = { name: fd.get('name').trim(), batch: fd.get('batch').trim() || null, phone: fd.get('phone').trim() || null, required_hours: Number(fd.get('required_hours')) || 24 };
     if (t) row.active = fd.get('active') === '1';
-    const { error } = t ? await sb.from('trainees').update(row).eq('id', t.id) : await sb.from('trainees').insert(row);
+    const { data: saved, error } = t ? await sb.from('trainees').update(row).eq('id', t.id).select().single() : await sb.from('trainees').insert(row).select().single();
     if (error) throw new Error(error.message);
-    return t ? 'Saved.' : `${row.name} added. Copy their invite from the list.`;
+    if (!t && saved) afterSave = () => dlgInvite(saved);
+    return t ? 'Saved.' : `${row.name} added.`;
   });
+}
+// Telegram only lets a bot message someone after they tap Start, so make that one tap as easy as possible
+const waNumber = (p) => { const d = String(p || '').replace(/\D/g, ''); return !d ? '' : d.length === 8 ? '65' + d : d; };
+function dlgInvite(t) {
+  if (!bot?.username) { toast('Connect the bot in Settings first.'); return; }
+  const link = linkFor(t);
+  const msg = `Hi ${t.name.split(' ')[0]}, please tap this link and press Start to get your Happy Fish attachment schedule and alerts on Telegram:\n${link}`;
+  const wa = waNumber(t.phone);
+  open(`<header><h2>Invite ${esc(t.name)} to Telegram</h2><p>Telegram needs them to tap Start once. After that, all their attachment messages arrive automatically.</p></header>
+  <div class="body">
+    <div class="invite">
+      <div><div id="qr" class="qr"></div><p class="muted" style="font-size:12.5px;margin:6px 0 0;text-align:center">With you in person? They scan this with their phone camera.</p></div>
+      <div class="invite-acts">
+        ${wa ? `<a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/${wa}?text=${encodeURIComponent(msg)}">Send invite on WhatsApp</a>` : `<p class="muted" style="margin:0;font-size:13px">Add their phone number (Edit) to send it on WhatsApp in one click.</p>`}
+        <button type="button" class="btn" id="inv-copy">Copy invite message</button>
+        <span class="linkbox">${esc(link)}</span>
+        <p id="inv-status" class="${t.telegram_chat_id ? 'ok' : 'muted'}" style="margin:4px 0 0">${t.telegram_chat_id ? '● Already linked' : '⏳ Waiting for them to tap Start…'}</p>
+      </div>
+    </div>
+  </div><footer><button class="btn" value="x" formnovalidate>Done</button></footer>`, async () => {});
+  try { new QRCode($('#qr'), { text: link, width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M }); } catch (e) { $('#qr').innerHTML = '<p class="muted">QR unavailable</p>'; }
+  $('#inv-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(msg); toast('Invite copied.'); } catch (x) { prompt('Copy this invite:', msg); }
+  });
+  if (t.telegram_chat_id) return;
+  const poll = setInterval(async () => {
+    if (!dlg.open) return clearInterval(poll);
+    const { data } = await sb.from('trainees').select('telegram_chat_id').eq('id', t.id).single();
+    if (data?.telegram_chat_id) { clearInterval(poll); const s = $('#inv-status'); if (s) { s.className = 'ok'; s.textContent = `✅ ${t.name} is linked. They'll get their attachment messages on Telegram.`; } load(); }
+  }, 3000);
 }
 function dlgCoach(c) {
   open(`<header><h2>${c ? 'Edit coach' : 'Add senior coach'}</h2></header><div class="body">
@@ -632,6 +671,7 @@ document.addEventListener('click', async (e) => {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = `attachment-${t.dataset.csv}-${todaySG()}.csv`; a.click(); return;
   }
+  if (t.dataset.invite) return dlgInvite(D.trainees.find((x) => x.id === t.dataset.invite));
   if (t.dataset.copy) {
     const tt = D.trainees.find((x) => x.id === t.dataset.copy);
     const txt = `Hi ${tt.name.split(' ')[0]}, please tap this link and press Start to get your Happy Fish attachment schedule and alerts on Telegram:\n${linkFor(tt)}`;
