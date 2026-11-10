@@ -138,6 +138,9 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 .invite-acts{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:0}
 .invite-acts .btn{white-space:normal;justify-content:center;text-align:center}
 .slots{display:flex;flex-direction:column;gap:6px}
+.slots.upcoming{max-height:290px;overflow-y:auto;padding-right:4px}
+.up-day{font-size:12px;font-weight:700;color:var(--muted);margin-top:4px}
+.slot.off{opacity:.5;cursor:not-allowed}
 .slot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px}
 .slot:hover,.slot.on{border-color:var(--pool);background:var(--pool-soft)}
 .slot span{grid-column:1;font-size:12.5px;color:var(--muted)}
@@ -502,18 +505,28 @@ form.addEventListener('submit', async (e) => {
 const opts = (arr, sel, val = (x) => x, lab = (x) => x) => arr.map((x) => `<option value="${esc(val(x))}" ${val(x) === sel ? 'selected' : ''}>${esc(lab(x))}</option>`).join('');
 const foot = (label, cls = 'primary') => `<footer><button class="btn" value="x" formnovalidate>Close</button><button class="btn ${cls}" value="ok">${label}</button></footer>`;
 
+// A coach's real slots for the coming weeks, from the synced Digital Brain timetable
+function upcomingSlots(coachId, days = 21) {
+  const out = [];
+  for (let i = 0; i <= days; i++) {
+    const d = addDays(todaySG(), i);
+    slotsFor(coachId, d).forEach((sl) => out.push({ ...sl, date: d, leave: leaveOn(coachId, d) }));
+  }
+  return out;
+}
 function dlgNew() {
   const coaches = D.coaches.filter((c) => c.active), trainees = D.trainees.filter((t) => t.active);
   if (!coaches.length || !trainees.length) { toast('Add at least one coach and one trainee first.'); return; }
-  open(`<header><h2>New attachment session</h2><p>Trainees you tick get a Telegram message with Confirm and Can't make it buttons.</p></header>
+  open(`<header><h2>New attachment session</h2><p>Pick the senior coach, then one of their real class slots. Trainees you tick get a Telegram message to confirm.</p></header>
   <div class="body">
+    <div class="f"><label for="n-coach">Senior coach</label><select id="n-coach" name="coach_id">${opts(coaches, '', (c) => c.id, (c) => c.name)}</select></div>
+    <div class="f"><span class="lbl">Their classes in the next 3 weeks (Digital Brain)</span><div id="n-up" class="slots upcoming"></div></div>
+    <p class="lbl" style="margin:4px 0 -4px;font-size:12px;font-weight:600;color:var(--muted)">Slot details (filled in for you; shorten the time if the trainee only stays for part)</p>
     <div class="f"><label for="n-branch">Branch</label><select id="n-branch" name="branch">${opts(D.branches, '', (b) => b.name, (b) => b.name)}</select></div>
-    <div class="row2"><div class="f"><label for="n-coach">Senior coach</label><select id="n-coach" name="coach_id">${opts(coaches, '', (c) => c.id, (c) => c.name)}</select></div>
-      <div class="f"><label for="n-date">Date</label><input id="n-date" type="date" name="date" required min="${todaySG()}" value="${addDays(todaySG(), 1)}"></div></div>
+    <div class="row2"><div class="f"><label for="n-date">Date</label><input id="n-date" type="date" name="date" required min="${todaySG()}" value="${addDays(todaySG(), 1)}"></div>
+      <div class="f"><label for="n-classes">Classes</label><input id="n-classes" name="classes_note" placeholder="optional"></div></div>
     <div class="row2"><div class="f"><label for="n-start">From</label><input id="n-start" type="time" name="start_time" required value="09:00"></div>
       <div class="f"><label for="n-end">To</label><input id="n-end" type="time" name="end_time" required value="12:00"></div></div>
-    <div class="f"><span class="lbl">This coach's classes that day (Digital Brain)</span><div id="n-tt" class="slots"></div></div>
-    <div class="f"><label for="n-classes">Classes (optional)</label><input id="n-classes" name="classes_note" placeholder="e.g. 2.2 Toddler Beginner, 1.2 Baby Beginner"></div>
     <div class="hint" id="n-hint"></div>
     <div class="f"><span class="lbl">Trainees (max 2)</span><div class="checks">${trainees.map((t) => `<label><input type="checkbox" name="trainee_ids" value="${t.id}"><span>${esc(t.name)}${t.telegram_chat_id ? '' : ' <span class="warn" style="font-size:11.5px">· not on Telegram</span>'}</span><span class="sub">${hoursOf(t.id)} / ${Number(t.required_hours)}h</span></label>`).join('')}</div></div>
     ${errP}</div>${foot('Create &amp; notify')}`, async (fd) => {
@@ -523,31 +536,48 @@ function dlgNew() {
     const r = await api('createSession', { branch: fd.get('branch'), coach_id: fd.get('coach_id'), date: fd.get('date'), start_time: fd.get('start_time'), end_time: fd.get('end_time'), classes_note: fd.get('classes_note'), trainee_ids: ids });
     return 'Session created. ' + sentMsg(r);
   });
-  let slots = [];
+  let ups = [], showAll = false;
   const upd = () => {
     const c = $('#n-coach').value, d = $('#n-date').value, s = $('#n-start').value, e = $('#n-end').value;
     const l = d && leaveOn(c, d);
-    $('#n-hint').innerHTML = l ? `⚠️ This coach has ${esc(l.reason)} on ${fmtDay(d)}. Pick another date.` : (s && e && e > s ? `Counts as <b>${hrs({ start_time: s, end_time: e })}h</b> toward 24h for each trainee who attends.` : 'End time must be after start time.');
+    const teaches = d && slotsFor(c, d).length;
+    $('#n-hint').innerHTML = l ? `⚠️ This coach has ${esc(l.reason)} on ${fmtDay(d)}. Pick another slot.`
+      : !(s && e && e > s) ? 'End time must be after start time.'
+      : `Counts as <b>${hrs({ start_time: s, end_time: e })}h</b> toward 24h for each trainee who attends.` + (d && D.classes.some((x) => x.coach_id === c) && !teaches ? ` <span class="warn">This coach has no classes on ${asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'long' })}s in Digital Brain.</span>` : '');
   };
-  const updSlots = () => {
-    slots = slotsFor($('#n-coach').value, $('#n-date').value);
-    const d = $('#n-date').value;
-    $('#n-tt').innerHTML = (slots.length
-      ? slots.map((sl, i) => `<button type="button" class="slot" data-slot="${i}"><b>${esc(short(sl.branch))} · ${fmtT(sl.start)}–${fmtT(sl.end)}</b><span>${sl.classes.map((c) => esc(c.lesson_level) + (c.tags ? ` (${esc(c.tags)})` : '')).join(' · ')}</span><em>Use this slot</em></button>`).join('')
-      : `<p class="muted" style="margin:0;font-size:13px">${D.classes.length ? `No classes found for this coach on ${d ? asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'long' }) + 's' : 'that day'}. Enter the slot by hand or request a sync.` : 'Timetable not synced yet. Enter the slot by hand.'}</p>`)
-      + `<p class="muted" style="margin:6px 0 0;font-size:12px">${syncLine()}</p>`;
-  };
-  $('#n-tt').addEventListener('click', (ev) => {
-    const b = ev.target.closest('[data-slot]'); if (!b) return;
-    const sl = slots[+b.dataset.slot];
-    if ([...$('#n-branch').options].some((o) => o.value === sl.branch)) $('#n-branch').value = sl.branch;
-    $('#n-start').value = sl.start; $('#n-end').value = sl.end;
+  const markOn = (i) => $('#n-up').querySelectorAll('.slot').forEach((x) => x.classList.toggle('on', x.dataset.up === String(i)));
+  const pick = (i) => {
+    const sl = ups[i];
+    if (![...$('#n-branch').options].some((o) => o.value === sl.branch)) $('#n-branch').insertAdjacentHTML('beforeend', `<option>${esc(sl.branch)}</option>`);
+    $('#n-branch').value = sl.branch; $('#n-date').value = sl.date; $('#n-start').value = sl.start; $('#n-end').value = sl.end;
     $('#n-classes').value = sl.classes.map((c) => c.lesson_level).join(', ');
-    $('#n-tt').querySelectorAll('.slot').forEach((x) => x.classList.toggle('on', x === b)); upd();
+    markOn(i); upd();
+  };
+  const renderUp = () => {
+    const coach = $('#n-coach').value;
+    ups = upcomingSlots(coach);
+    const foot = `<p class="muted" style="margin:6px 0 0;font-size:12px">${syncLine()}</p>`;
+    if (!ups.length) {
+      $('#n-up').innerHTML = `<p class="muted" style="margin:0;font-size:13px">${D.classes.some((c) => c.coach_id === coach) ? 'No classes in the next 3 weeks.' : "This coach's timetable isn't synced yet. Request a sync in Settings, or fill in the slot below."}</p>` + foot;
+      return;
+    }
+    const list = showAll ? ups : ups.slice(0, 8);
+    let h = '', last = '';
+    list.forEach((sl, i) => {
+      if (sl.date !== last) { h += `<div class="up-day">${fmtDayLong(sl.date)}${sl.date === todaySG() ? ' · today' : ''}</div>`; last = sl.date; }
+      h += `<button type="button" class="slot${sl.leave ? ' off' : ''}" data-up="${i}" ${sl.leave ? 'disabled' : ''}><b>${esc(short(sl.branch))} · ${fmtT(sl.start)}–${fmtT(sl.end)} · ${hrs({ start_time: sl.start, end_time: sl.end })}h</b><span>${sl.classes.length} class${sl.classes.length > 1 ? 'es' : ''}: ${sl.classes.map((c) => esc(c.lesson_level) + (c.tags ? ` (${esc(c.tags)})` : '')).join(' · ')}</span><em>${sl.leave ? 'On ' + esc(sl.leave.reason) : 'Use this slot'}</em></button>`;
+    });
+    if (!showAll && ups.length > list.length) h += `<button type="button" class="btn sm" id="n-more">Show all ${ups.length} slots</button>`;
+    $('#n-up').innerHTML = h + foot;
+  };
+  const start = () => { showAll = false; renderUp(); const f = ups.findIndex((s) => !s.leave); if (f >= 0) pick(f); else upd(); };
+  $('#n-up').addEventListener('click', (ev) => {
+    if (ev.target.closest('#n-more')) { const on = $('#n-up .slot.on')?.dataset.up; showAll = true; renderUp(); if (on) markOn(on); return; }
+    const b = ev.target.closest('[data-up]'); if (!b || b.disabled) return; pick(+b.dataset.up);
   });
-  ['n-coach', 'n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', upd));
-  ['n-coach', 'n-date'].forEach((id) => $('#' + id).addEventListener('input', updSlots));
-  upd(); updSlots();
+  $('#n-coach').addEventListener('input', start);
+  ['n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', () => { markOn(-1); upd(); }));
+  start();
 }
 function dlgResched(s) {
   open(`<header><h2>Reschedule</h2><p>${esc(s.coach.name)} · currently ${when(s)}</p></header><div class="body">
