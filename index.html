@@ -154,7 +154,8 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
     <form id="loginForm" class="f" style="gap:10px">
       <label for="email">Email</label>
       <input id="email" type="email" required autocomplete="email" placeholder="you@example.com">
-      <button class="btn primary" type="submit">Send sign-in link</button>
+      <button class="btn primary" type="submit">Send sign-in link by email</button>
+      <button class="btn" type="button" id="btnTgLogin">Send link to my Telegram</button>
       <p class="muted" id="loginMsg" style="margin:0"></p>
     </form>
   </section>
@@ -443,7 +444,8 @@ function renderSettings() {
       <div class="acts"><button class="btn primary sm" id="btnConnect">Connect bot</button><button class="btn sm" id="btnBotCheck">Check again</button></div>
     </div>
     <div class="box"><h3>Who can use this console</h3>
-      <table><tbody>${D.admins.map((a) => `<tr><td>${esc(a.email)}</td><td class="num">${a.email === me ? '<span class="muted">you</span>' : `<button class="btn sm danger" data-deladmin="${esc(a.email)}">Remove</button>`}</td></tr>`).join('')}</tbody></table>
+      <table><tbody>${D.admins.map((a) => `<tr><td>${esc(a.email)}<div style="font-size:12px" class="${a.telegram_chat_id ? 'ok' : 'warn'}">${a.telegram_chat_id ? '● Telegram linked' : '● Telegram not linked'}</div></td><td class="num"><div class="acts" style="justify-content:flex-end">${!a.telegram_chat_id && bot?.username ? `<button class="btn sm" data-admininvite="${esc(a.email)}">Copy Telegram invite</button>` : ''}${a.email === me ? '<span class="muted">you</span>' : `<button class="btn sm danger" data-deladmin="${esc(a.email)}">Remove</button>`}</div></td></tr>`).join('')}</tbody></table>
+      <p class="muted" style="font-size:12.5px;margin:8px 0 0">New people sign in with <b>Send link to my Telegram</b> once they've opened their Telegram invite. (Email sign-in only reaches people on the Supabase team until a Gmail sender is set up.)</p>
       <form id="adminForm" class="acts" style="margin-top:10px"><input id="adminEmail" type="email" required placeholder="assistant@email.com" aria-label="Email to add" style="flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--bg)"><button class="btn sm primary">Add</button></form>
     </div>
     <div class="box"><h3>Coaches' timetable from Digital Brain</h3>
@@ -636,6 +638,12 @@ document.addEventListener('click', async (e) => {
     try { await navigator.clipboard.writeText(txt); toast('Invite copied. Paste it into WhatsApp or Telegram.'); } catch (x) { prompt('Copy this invite:', txt); }
     return;
   }
+  if (t.dataset.admininvite) {
+    const a = D.admins.find((x) => x.email === t.dataset.admininvite);
+    const txt = `Hi! Tap this link and press Start to connect your Telegram to the Happy Fish Attachment Log console:\nhttps://t.me/${bot.username}?start=A${a.link_code}\n\nThen open ${location.origin + location.pathname}, enter ${a.email} and press "Send link to my Telegram" to sign in.`;
+    try { await navigator.clipboard.writeText(txt); toast('Invite copied. Send it to them on WhatsApp or Telegram.'); } catch (x) { prompt('Copy this invite:', txt); }
+    return;
+  }
   if (t.dataset.delleave) { if (!confirm('Remove this leave?')) return; try { await api('removeLeave', { id: t.dataset.delleave }); toast('Leave removed.'); await load(); } catch (x) { toast(x.message); } return; }
   if (t.dataset.deladmin) { if (!confirm(`Remove ${t.dataset.deladmin}?`)) return; await sb.from('admins').delete().eq('email', t.dataset.deladmin); return load(); }
   if (t.id === 'btnNew') return dlgNew();
@@ -664,6 +672,15 @@ document.addEventListener('submit', async (e) => {
     if (error) return toast(error.message);
     toast('Added. They can now sign in with that email.'); load();
   }
+});
+$('#btnTgLogin').addEventListener('click', async () => {
+  const email = $('#email').value.trim();
+  if (!email) { $('#loginMsg').textContent = 'Enter your email first.'; return; }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/api`, { method: 'POST', headers: { 'content-type': 'application/json', apikey: SUPABASE_ANON_KEY }, body: JSON.stringify({ action: 'telegramLogin', email }) });
+    const j = await r.json();
+    $('#loginMsg').textContent = (j.message || 'Sent.') + ' Not linked yet? Ask an admin for your Telegram invite (Settings).';
+  } catch (x) { $('#loginMsg').textContent = 'Could not send. Try again.'; }
 });
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
