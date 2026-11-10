@@ -267,10 +267,20 @@ function slotsFor(coachId, date) {
   if (!coachId || !date) return [];
   const wd = asUTC(date).getUTCDay(), by = {};
   D.classes.filter((c) => c.coach_id === coachId && c.weekday === wd).forEach((c) => { (by[c.branch] = by[c.branch] || []).push(c); });
-  return Object.entries(by).map(([branch, cs]) => {
+  // Split a branch's day into back-to-back blocks; a gap over 15 min (e.g. lunch) starts a new slot
+  const out = [];
+  Object.entries(by).forEach(([branch, cs]) => {
     cs.sort((a, b) => a.start_time.localeCompare(b.start_time));
-    return { branch, start: cs[0].start_time.slice(0, 5), end: cs.reduce((m, c) => (c.end_time > m ? c.end_time : m), '').slice(0, 5), classes: cs };
+    let cur = null;
+    cs.forEach((c) => {
+      if (cur && toMin(c.start_time) <= toMin(cur.end) + 15) {
+        cur.classes.push(c); if (c.end_time.slice(0, 5) > cur.end) cur.end = c.end_time.slice(0, 5);
+      } else {
+        cur = { branch, start: c.start_time.slice(0, 5), end: c.end_time.slice(0, 5), classes: [c] }; out.push(cur);
+      }
+    });
   });
+  return out.sort((a, b) => a.start.localeCompare(b.start));
 }
 const upcomingFor = (tid) => D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.session_trainees.some((x) => x.trainee_id === tid));
 
