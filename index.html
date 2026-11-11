@@ -69,6 +69,9 @@ button{cursor:pointer}
 .time{font-family:var(--mono);font-size:13px}.time small{display:block;color:var(--muted)}
 .what h4{margin:0 0 2px;font-size:14.5px}
 .meta{color:var(--muted);font-size:13px}
+.clsl{list-style:none;margin:6px 0 0;padding:6px 10px;display:grid;gap:3px;font-size:12.5px;color:var(--muted);border-left:2px solid var(--line)}
+.clsl li{display:grid;grid-template-columns:64px minmax(0,1fr);gap:8px}
+.clsl .mono{font-size:12px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 9px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
 .dot{width:7px;height:7px;border-radius:50%}
@@ -324,6 +327,13 @@ function slotsFor(coachId, date) {
   out.forEach((b) => b.off.sort((x, y) => x.start_time.localeCompare(y.start_time)));
   return out.sort((a, b) => a.start.localeCompare(b.start));
 }
+// "9am 2.5 Toddler Advance +, 9:30am 2.2 Toddler Beginner" -> one class per line; any other note stays as plain text
+function classList(note) {
+  if (!note) return '';
+  const items = String(note).split(/,\s*(?=\d{1,2}(?::\d{2})?(?:am|pm)\s)/i).map((x) => x.trim().match(/^(\d{1,2}(?::\d{2})?(?:am|pm))\s+(.+)$/i));
+  if (items.some((m) => !m)) return `<div class="meta">${esc(note)}</div>`;
+  return `<ul class="clsl">${items.map((m) => `<li><span class="mono">${esc(m[1])}</span><span>${esc(m[2])}</span></li>`).join('')}</ul>`;
+}
 const upcomingFor = (tid) => D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.session_trainees.some((x) => x.trainee_id === tid));
 
 /* ---------- render ---------- */
@@ -388,7 +398,7 @@ function renderSchedule() {
       const needsLog = s.status === 'scheduled' && s.date < today;
       h += `<div class="sess ${s.status}">
         <div class="time">${fmtT(s.start_time)}<small>${fmtT(s.end_time)} · ${hrs(s)}h</small></div>
-        <div class="what"><h4>${esc(s.coach.name)}</h4><div class="meta">📍 ${esc(s.branch)}${s.classes_note ? ' · ' + esc(s.classes_note) : ''}</div>
+        <div class="what"><h4>${esc(s.coach.name)}</h4><div class="meta">📍 ${esc(s.branch)}</div>${classList(s.classes_note)}
           <div class="chips">${s.session_trainees.map((x) => chip(x, s)).join('') || '<span class="muted">No trainees</span>'}</div>
           ${s.status === 'cancelled' ? `<div class="note bad">Cancelled: ${esc(s.cancel_reason)}${s.note ? ' · ' + esc(s.note) : ''}</div>` : ''}
           ${s.status === 'scheduled' && last ? `<div class="note info">Moved from ${fmtDay(last.from_date)} ${fmtT(last.from_start)} · ${esc(last.reason)}</div>` : ''}
