@@ -147,13 +147,16 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 .cblock{flex:none;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .chead{display:flex;gap:8px;align-items:center;padding:7px 10px;background:var(--surface-2);font-size:13px}
 .chead .btn{margin-left:auto}
-.crow{display:grid;grid-template-columns:18px 118px minmax(0,1fr) auto;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line);cursor:pointer;font-size:13.5px}
+.crow{display:grid;grid-template-columns:18px 118px minmax(0,1fr) auto 38px;gap:10px;align-items:center;padding:6px 10px;border-top:1px solid var(--line);cursor:pointer;font-size:13.5px}
 .crow:has(input:checked){background:var(--pool-soft)}
 .crow input{width:16px;height:16px;margin:0;accent-color:var(--pool)}
 .ctime{font-size:12.5px;color:var(--muted)}
 .csize{font-size:12.5px;color:var(--muted);text-align:right}
+.cdate{font-size:12px;color:var(--muted);white-space:nowrap;text-align:right}
+.crow.off{cursor:not-allowed;background:var(--surface-2)}
+.crow.off .ctime,.crow.off .clevel,.crow.off .csize{opacity:.55}
 .tagp{display:inline-block;font-size:10.5px;font-weight:700;color:var(--info);background:var(--info-soft);border-radius:4px;padding:0 5px;margin-left:4px}
-@media (max-width:480px){.crow{grid-template-columns:18px minmax(0,1fr) auto}.ctime{grid-column:2}.clevel{grid-column:2}}
+@media (max-width:480px){.crow{grid-template-columns:18px minmax(0,1fr) auto}.ctime,.clevel,.cdate{grid-column:2}.cdate{text-align:left}.csize{grid-column:3;grid-row:1}}
 details summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
 .up-day{font-size:12px;font-weight:700;color:var(--muted);margin-top:4px}
 .slot.off{opacity:.5;cursor:not-allowed}
@@ -281,11 +284,23 @@ const lastSynced = () => D.classes.reduce((m, c) => (c.synced_at > m ? c.synced_
 const pendingSync = () => D.syncs.find((s) => s.status === 'pending');
 const ago = (ts) => { if (!ts) return 'never'; const d = Math.round((Date.now() - new Date(ts)) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
 const syncLine = () => `Timetable from Digital Brain: synced ${ago(lastSynced())}${pendingSync() ? ' · <span class="warn">sync requested</span>' : ''}`;
-// A coach's Digital Brain classes on one weekday, grouped into one slot per branch
+// Why a class has no lesson on a date: its group hasn't started yet, or nobody has signed up (e.g. a new Introductory/Foundation group)
+const dayMon = (d) => asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+function noLesson(c, date) {
+  if (c.start_date && c.start_date > date) return `Starts ${dayMon(c.start_date)}`;
+  if (/^0\s*\//.test(c.students || '')) return 'No sign-ups yet';
+  return '';
+}
+// A coach's Digital Brain classes on one weekday, grouped into one slot per branch.
+// Only classes with a lesson that date are grouped; the others are listed greyed out under their branch.
 function slotsFor(coachId, date) {
   if (!coachId || !date) return [];
-  const wd = asUTC(date).getUTCDay(), by = {};
-  D.classes.filter((c) => c.coach_id === coachId && c.weekday === wd).forEach((c) => { (by[c.branch] = by[c.branch] || []).push(c); });
+  const wd = asUTC(date).getUTCDay(), by = {}, off = {};
+  D.classes.filter((c) => c.coach_id === coachId && c.weekday === wd).forEach((c) => {
+    const why = noLesson(c, date);
+    if (why) (off[c.branch] = off[c.branch] || []).push({ ...c, why });
+    else (by[c.branch] = by[c.branch] || []).push(c);
+  });
   // Split a branch's day into back-to-back blocks; a gap over 15 min (e.g. lunch) starts a new slot
   const out = [];
   Object.entries(by).forEach(([branch, cs]) => {
@@ -295,10 +310,18 @@ function slotsFor(coachId, date) {
       if (cur && toMin(c.start_time) <= toMin(cur.end) + 15) {
         cur.classes.push(c); if (c.end_time.slice(0, 5) > cur.end) cur.end = c.end_time.slice(0, 5);
       } else {
-        cur = { branch, start: c.start_time.slice(0, 5), end: c.end_time.slice(0, 5), classes: [c] }; out.push(cur);
+        cur = { branch, start: c.start_time.slice(0, 5), end: c.end_time.slice(0, 5), classes: [c], off: [] }; out.push(cur);
       }
     });
   });
+  // Put each branch's no-lesson classes under the block they fall in (or the nearest one before)
+  Object.entries(off).forEach(([branch, cs]) => cs.forEach((c) => {
+    const mine = out.filter((b) => b.branch === branch);
+    const home = mine.filter((b) => b.start <= c.start_time.slice(0, 5)).pop() || mine[0];
+    if (home) home.off.push(c);
+    else out.push({ branch, start: c.start_time.slice(0, 5), end: c.end_time.slice(0, 5), classes: [], off: [c] });
+  }));
+  out.forEach((b) => b.off.sort((x, y) => x.start_time.localeCompare(y.start_time)));
   return out.sort((a, b) => a.start.localeCompare(b.start));
 }
 const upcomingFor = (tid) => D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.session_trainees.some((x) => x.trainee_id === tid));
@@ -525,8 +548,8 @@ const foot = (label, cls = 'primary') => `<footer><button class="btn" value="x" 
 function upcomingDays(coachId, days = 21) {
   const out = [];
   for (let i = 0; i <= days; i++) {
-    const d = addDays(todaySG(), i), blocks = slotsFor(coachId, d);
-    if (blocks.length) out.push({ date: d, blocks, n: blocks.reduce((k, b) => k + b.classes.length, 0), leave: leaveOn(coachId, d) });
+    const d = addDays(todaySG(), i), blocks = slotsFor(coachId, d), n = blocks.reduce((k, b) => k + b.classes.length, 0);
+    if (n) out.push({ date: d, blocks, n, leave: leaveOn(coachId, d) });
   }
   return out;
 }
@@ -560,7 +583,7 @@ function dlgNew() {
   const hint = () => {
     const c = $('#n-coach').value, d = $('#n-date').value, s = $('#n-start').value, e = $('#n-end').value, l = d && leaveOn(c, d);
     if (l) return void ($('#n-hint').innerHTML = `⚠️ This coach has ${esc(l.reason)} on ${fmtDay(d)}. Pick another day.`);
-    if (!(s && e && e > s)) return void ($('#n-hint').innerHTML = 'Tick at least one class.');
+    if (!(s && e && e > s) || (days.length && !picked.length && !$('#n-man').open)) return void ($('#n-hint').innerHTML = 'Tick at least one class.');
     const gap = picked.length > 1 && picked.some((x, i) => i && toMin(x.start_time) > toMin(picked[i - 1].end_time) + 15);
     $('#n-hint').innerHTML = `${picked.length ? `<b>${picked.length} class${picked.length > 1 ? 'es' : ''}</b> · ${esc(short($('#n-branch').value))} · ` : ''}${fmtDay(d)} ${fmtT(s)}–${fmtT(e)} · counts as <b>${hrs({ start_time: s, end_time: e })}h</b> toward 24h` + (gap ? ' <span class="warn">(includes a break between classes)</span>' : '');
   };
@@ -579,9 +602,17 @@ function dlgNew() {
   };
   const renderList = () => {
     if (!day) { $('#n-list').innerHTML = ''; return; }
-    $('#n-list').innerHTML = day.blocks.map((b, bi) => `<div class="cblock"><div class="chead"><b>${esc(b.branch)}</b><span class="muted">${fmtT(b.start)}–${fmtT(b.end)}</span><button type="button" class="btn sm" data-all="${bi}">Select all</button></div>
-      ${b.classes.map((c, ci) => `<label class="crow"><input type="checkbox" data-bi="${bi}" data-ci="${ci}"><span class="mono ctime">${fmtT(c.start_time)}–${fmtT(c.end_time)}</span><span class="clevel">${esc(c.lesson_level)} ${tagPills(c.tags)}</span><span class="mono csize" title="Students / class size at last sync">${esc(c.students || '')}</span></label>`).join('')}</div>`).join('')
-      + `<p class="muted" style="margin:6px 0 0;font-size:12px">Students = class size at last sync. ${syncLine()}</p>`;
+    const lessonDay = dayMon(day.date);
+    const row = (c, bi, ci) => {
+      const first = !c.why && c.start_date === day.date;
+      return `<label class="crow${c.why ? ' off' : ''}"${c.why ? ` title="No lesson on ${esc(lessonDay)}: ${esc(c.why)}"` : ''}><input type="checkbox" ${c.why ? 'disabled' : `data-bi="${bi}" data-ci="${ci}"`}><span class="mono ctime">${fmtT(c.start_time)}–${fmtT(c.end_time)}</span><span class="clevel">${esc(c.lesson_level)} ${tagPills(c.tags)}</span><span class="cdate${c.why ? ' warn' : ''}">${esc(c.why || lessonDay)}${first ? ' · 1st lesson' : ''}</span><span class="mono csize" title="Students / class size at last sync">${esc(c.students || '')}</span></label>`;
+    };
+    $('#n-list').innerHTML = day.blocks.map((b, bi) => {
+      const rows = [...b.classes.map((c, ci) => ({ c, ci })), ...b.off.map((c) => ({ c }))].sort((x, y) => x.c.start_time.localeCompare(y.c.start_time));
+      return `<div class="cblock"><div class="chead"><b>${esc(b.branch)}</b><span class="muted">${b.classes.length ? `${fmtT(b.start)}–${fmtT(b.end)}` : 'no lessons this day'}</span>${b.classes.length ? `<button type="button" class="btn sm" data-all="${bi}">Select all</button>` : ''}</div>
+      ${rows.map((x) => row(x.c, bi, x.ci)).join('')}</div>`;
+    }).join('')
+      + `<p class="muted" style="margin:6px 0 0;font-size:12px">Greyed-out classes have no lesson on ${esc(lessonDay)}: the group starts later, or nobody has signed up. Students = sign-ups / class size at last sync. ${syncLine()}</p>`;
     picked = []; hint();
   };
   const renderDays = () => {
@@ -606,16 +637,18 @@ function dlgNew() {
   $('#n-list').addEventListener('click', (ev) => {
     const all = ev.target.closest('[data-all]'); if (!all) return;
     const bi = all.dataset.all, boxes = [...$('#n-list').querySelectorAll(`input[data-bi="${bi}"]`)], on = !boxes.every((x) => x.checked);
-    $('#n-list').querySelectorAll('input[data-ci]').forEach((x) => { x.checked = x.dataset.bi === bi ? on : false; });
+    const br = day.blocks[+bi].branch; // other blocks at the same branch keep their ticks; other branches are cleared
+    $('#n-list').querySelectorAll('input[data-ci]').forEach((x) => { if (x.dataset.bi === bi) x.checked = on; else if (on && day.blocks[+x.dataset.bi].branch !== br) x.checked = false; });
     fill();
   });
   $('#n-list').addEventListener('change', (ev) => {
     const x = ev.target.closest('input[data-ci]'); if (!x) return;
-    if (x.checked) $('#n-list').querySelectorAll('input[data-ci]').forEach((y) => { if (y.dataset.bi !== x.dataset.bi) y.checked = false; }); // one branch per session
+    if (x.checked) $('#n-list').querySelectorAll('input[data-ci]').forEach((y) => { if (day.blocks[+y.dataset.bi].branch !== day.blocks[+x.dataset.bi].branch) y.checked = false; }); // one branch per session
     fill();
   });
   $('#n-coach').addEventListener('input', renderDays);
   ['n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', hint));
+  $('#n-man').addEventListener('toggle', hint);
   renderDays();
 }
 function dlgResched(s) {
