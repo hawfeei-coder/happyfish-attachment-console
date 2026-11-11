@@ -251,6 +251,7 @@ async function api(action, params = {}) {
   return j;
 }
 const sentMsg = (r) => {
+  if (r && r.held) return "Trainees haven't been notified yet, so no Telegram message was sent.";
   if (!r || r.sent === undefined) return '';
   const bits = [`Telegram sent to ${r.sent}`];
   if (r.skipped) bits.push(`${r.skipped} not on Telegram (call them)`);
@@ -341,7 +342,7 @@ function render() {
   const declined = D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG()).reduce((n, s) => n + s.session_trainees.filter((x) => x.response === 'declined').length, 0);
   const clashes = D.sessions.filter((s) => clash(s) && s.date >= todaySG()).length;
   const toLog = D.sessions.filter((s) => s.status === 'scheduled' && s.date < todaySG()).length;
-  const pending = D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG()).reduce((n, s) => n + s.session_trainees.filter((x) => x.response === 'pending').length, 0);
+  const pending = D.sessions.filter((s) => s.status === 'scheduled' && s.notified_at && s.date >= todaySG()).reduce((n, s) => n + s.session_trainees.filter((x) => x.response === 'pending').length, 0);
   $('#stats').innerHTML = `
     <div><b class="mono">${D.sessions.filter((s) => s.status === 'scheduled' && s.date >= todaySG() && s.date <= addDays(todaySG(), 6)).length}</b><span>Sessions in the next 7 days</span></div>
     <div><b class="mono" style="color:${pending ? 'var(--warn)' : 'inherit'}">${pending}</b><span>Waiting for trainee reply</span></div>
@@ -359,6 +360,7 @@ function chip(x, s) {
   let cls, label;
   if (s.status === 'completed') { cls = 'd-' + (x.attendance || 'none'); label = x.attendance === 'present' ? `Present · ${Number(x.hours_credited)}h` : x.attendance === 'absent' ? 'Absent' : '–'; }
   else if (s.status === 'cancelled') { cls = 'd-none'; label = 'Cancelled'; }
+  else if (!s.notified_at) { cls = 'd-none'; label = 'Not notified yet'; }
   else { cls = 'd-' + x.response; label = { pending: 'No reply yet', confirmed: 'Confirmed', declined: "Can't attend" }[x.response]; }
   const f = D.notif.find((n) => n.session_id === s.id && n.trainee_id === x.trainee_id && n.status === 'failed');
   if (!t.telegram_chat_id && s.status === 'scheduled') label += ' · not on Telegram';
@@ -410,6 +412,7 @@ function renderSchedule() {
         </div>
         <div class="side"><span class="pill p-${c ? 'clash' : s.status}">${c ? 'leave clash' : s.status}</span>
           ${s.status === 'scheduled' ? `<div class="acts">
+            ${s.notified_at ? '' : `<button class="btn sm primary" data-act="notify" data-id="${s.id}">Notify trainees</button>`}
             <button class="btn sm ${needsLog ? 'primary' : ''}" data-act="attend" data-id="${s.id}" ${s.date > today ? 'disabled title="Available from the day of the session"' : ''}>Log attendance</button>
             <button class="btn sm" data-act="resched" data-id="${s.id}">Reschedule</button>
             <button class="btn sm danger" data-act="cancel" data-id="${s.id}">Cancel</button></div>` : ''}
@@ -581,13 +584,14 @@ function dlgNew() {
         <div class="f"><label for="n-end">To</label><input id="n-end" type="time" name="end_time" required value="12:00"></div></div>
     </details>
     <div class="f"><span class="lbl">Trainees (max 2)</span><div class="checks">${trainees.map((t) => `<label><input type="checkbox" name="trainee_ids" value="${t.id}"><span>${esc(t.name)}${t.telegram_chat_id ? '' : ' <span class="warn" style="font-size:11.5px">· not on Telegram</span>'}</span><span class="sub">${hoursOf(t.id)} / ${Number(t.required_hours)}h</span></label>`).join('')}</div></div>
-    ${errP}</div>${foot('Create &amp; notify')}`, async (fd) => {
+    <p class="muted" style="margin:0;font-size:13px">Nothing is sent yet. After creating, press <b>Notify trainees</b> on the session to send the Telegram message.</p>
+    ${errP}</div>${foot('Create session')}`, async (fd) => {
     const ids = fd.getAll('trainee_ids');
     if (!ids.length) throw new Error('Pick at least one trainee.');
     if (ids.length > 2) throw new Error('Max 2 trainees per session.');
     if (days.length && !picked.length && !$('#n-man').open) throw new Error('Tick at least one class, or use "Edit the slot by hand".');
     const r = await api('createSession', { branch: fd.get('branch'), coach_id: fd.get('coach_id'), date: fd.get('date'), start_time: fd.get('start_time'), end_time: fd.get('end_time'), classes_note: fd.get('classes_note'), trainee_ids: ids });
-    return 'Session created. ' + sentMsg(r);
+    return 'Session created. Press "Notify trainees" on it when you\'re ready to send.';
   });
   let days = [], day = null, picked = [];
   const hint = () => {
@@ -660,6 +664,17 @@ function dlgNew() {
   ['n-date', 'n-start', 'n-end'].forEach((id) => $('#' + id).addEventListener('input', hint));
   $('#n-man').addEventListener('toggle', hint);
   renderDays();
+}
+function dlgNotify(s) {
+  const names = s.session_trainees.map((x) => tr(x.trainee_id));
+  open(`<header><h2>Notify trainees</h2><p>${esc(s.coach.name)} · ${when(s)}</p></header><div class="body">
+    <p style="margin:0">Send the Telegram message with <b>Confirm</b> / <b>Can't make it</b> buttons to:</p>
+    <div class="chips" style="margin:0">${names.map((t) => `<span class="chip"><b style="font-weight:600">${esc(t.name)}</b>${t.telegram_chat_id ? '' : '<span class="warn">not on Telegram</span>'}</span>`).join('')}</div>
+    ${names.some((t) => !t.telegram_chat_id) ? '<p class="muted" style="margin:0;font-size:13px">Trainees not on Telegram won\'t get a message. Tell them yourself or send their invite from the Trainees tab.</p>' : ''}
+    ${errP}</div>${foot('Send now')}`, async () => {
+    const r = await api('notifySession', { id: s.id });
+    return 'Trainees notified. ' + sentMsg(r);
+  });
 }
 function dlgResched(s) {
   open(`<header><h2>Reschedule</h2><p>${esc(s.coach.name)} · currently ${when(s)}</p></header><div class="body">
@@ -783,7 +798,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('button'); if (!t || t.closest('dialog')) return;
   if (t.classList.contains('tab')) { tab = t.dataset.tab; try { localStorage.setItem('hf-tab', tab); } catch (x) {} render(); return; }
   const s = t.dataset.id && D.sessions.find((x) => x.id === t.dataset.id);
-  if (t.dataset.act) return ({ attend: dlgAttend, resched: dlgResched, cancel: dlgCancel, postpone: dlgPostpone })[t.dataset.act](s);
+  if (t.dataset.act) return ({ attend: dlgAttend, resched: dlgResched, cancel: dlgCancel, postpone: dlgPostpone, notify: dlgNotify })[t.dataset.act](s);
   if (t.dataset.add) return ({ trainee: () => dlgTrainee(), coach: () => dlgCoach(), leave: dlgLeave })[t.dataset.add]();
   if (t.dataset.edit === 'trainee') return dlgTrainee(D.trainees.find((x) => x.id === t.dataset.id));
   if (t.dataset.edit === 'coach') return dlgCoach(D.coaches.find((x) => x.id === t.dataset.id));
