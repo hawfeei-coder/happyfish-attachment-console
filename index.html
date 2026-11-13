@@ -50,6 +50,28 @@ button{cursor:pointer}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .panel{padding:4px 16px 18px}
+/* Calendar tab */
+.calbar{display:flex;align-items:center;gap:8px;padding:12px 0 10px;flex-wrap:wrap}
+.calbar h3{font-size:17px;min-width:150px;text-align:center}
+.calbar .muted{margin-left:auto;font-size:13px}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.cdow{background:var(--surface-2);font-size:11.5px;font-weight:700;color:var(--muted);padding:6px 8px;text-transform:uppercase;letter-spacing:.05em}
+.cday{background:var(--surface);min-height:100px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.cday.out{background:var(--bg)}.cday.out .cnum{opacity:.45}
+.cnum{font-size:12.5px;font-weight:700;color:var(--muted)}
+.cday.ctoday .cn{background:var(--pool);color:var(--pool-ink);border-radius:999px;padding:1px 7px}
+.cwd{display:none}
+.cev{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;min-width:0;text-align:left;border:0;border-left:3px solid var(--muted);background:var(--surface-2);border-radius:5px;padding:3px 6px;font:inherit;font-size:12px;color:var(--fg);cursor:pointer}
+.cev:hover{filter:brightness(.96)}
+.cev .mono{font-size:11px;color:var(--muted)}
+.cev .nm{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.cs-ok{border-left-color:var(--ok)}.cs-wait{border-left-color:var(--warn)}.cs-bad{border-left-color:var(--bad);background:var(--bad-soft)}.cs-new{border-left-style:dashed}.cs-done{border-left-color:var(--info);opacity:.75}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--muted)}
+.calnone{display:none}
+.sess.flash{animation:flash 1.8s}
+@keyframes flash{0%,45%{background:var(--pool-soft)}100%{background:transparent}}
+@media (max-width:640px){.cal{display:block;background:none;border:0;border-radius:0}.cdow,.cday.cempty,.cday.out{display:none}.cday{min-height:0;padding:10px 0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap}.cnum{width:100%;font-size:13.5px;color:var(--fg)}.cwd{display:inline}.cev{width:auto;flex:1 1 150px}.calnone{display:block}}
 .filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0}
 .filters select,.filters input{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--surface)}
 .grow{flex:1}
@@ -195,6 +217,7 @@ details summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)
     <div class="head">
       <div class="tabs" role="tablist">
         <button class="tab" data-tab="schedule">Schedule</button>
+        <button class="tab" data-tab="calendar">Calendar</button>
         <button class="tab" data-tab="reports">Reports</button>
         <button class="tab" data-tab="trainees">Trainees</button>
         <button class="tab" data-tab="coaches">Coaches &amp; leave</button>
@@ -352,7 +375,7 @@ function render() {
     b.setAttribute('aria-selected', String(b.dataset.tab === tab));
     if (b.dataset.tab === 'schedule') b.innerHTML = 'Schedule' + (declined + clashes + toLog ? `<span class="count">${declined + clashes + toLog}</span>` : '');
   });
-  $('#panel').innerHTML = ({ schedule: renderSchedule, reports: renderReports, trainees: renderTrainees, coaches: renderCoaches, log: renderLog, settings: renderSettings })[tab]();
+  $('#panel').innerHTML = ({ schedule: renderSchedule, calendar: renderCalendar, reports: renderReports, trainees: renderTrainees, coaches: renderCoaches, log: renderLog, settings: renderSettings })[tab]();
 }
 
 function chip(x, s) {
@@ -366,6 +389,36 @@ function chip(x, s) {
   if (!t.telegram_chat_id && s.status === 'scheduled') label += ' · not on Telegram';
   else if (f && s.status === 'scheduled') label += ' · message failed';
   return `<span class="chip"><span class="dot ${cls}"></span><b style="font-weight:600">${esc(t.name)}</b><span class="muted">${label}</span></span>`;
+}
+
+// Calendar tab: month grid of attachment sessions, showing only the time and the trainees
+let calMonth = todaySG().slice(0, 7);
+function calState(s) {
+  if (s.status === 'completed') return 'done';
+  if (!s.notified_at) return 'new';
+  const r = s.session_trainees.map((x) => x.response);
+  if (clash(s) || r.includes('declined')) return 'bad';
+  return r.length && r.every((x) => x === 'confirmed') ? 'ok' : 'wait';
+}
+function renderCalendar() {
+  const [y, m] = calMonth.split('-').map(Number), first = `${calMonth}-01`, today = todaySG();
+  const lead = (asUTC(first).getUTCDay() + 6) % 7, start = addDays(first, -lead); // weeks start on Monday
+  const weeks = Math.ceil((lead + new Date(Date.UTC(y, m, 0)).getUTCDate()) / 7);
+  const byDay = {};
+  D.sessions.filter((s) => s.status !== 'cancelled').forEach((s) => { (byDay[s.date] = byDay[s.date] || []).push(s); });
+  const inMonth = D.sessions.filter((s) => s.status !== 'cancelled' && s.date.startsWith(calMonth)).length;
+  let cells = '';
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = addDays(start, i), ss = (byDay[d] || []).sort((a, b) => a.start_time.localeCompare(b.start_time));
+    cells += `<div class="cday${d.slice(0, 7) !== calMonth ? ' out' : ''}${d === today ? ' ctoday' : ''}${ss.length ? '' : ' cempty'}">
+      <div class="cnum"><span class="cwd">${asUTC(d).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'short' })} </span><span class="cn">${Number(d.slice(8))}</span></div>
+      ${ss.map((s) => `<button type="button" class="cev cs-${calState(s)}" data-cal="${s.id}" title="${esc(s.coach.name)} · ${esc(short(s.branch))}"><span class="mono">${fmtT(s.start_time)}–${fmtT(s.end_time)}</span>${s.session_trainees.map((x) => `<span class="nm">${esc(tr(x.trainee_id).name)}</span>`).join('') || '<span class="muted">No trainees</span>'}</button>`).join('')}</div>`;
+  }
+  const title = asUTC(first).toLocaleDateString('en-SG', { timeZone: 'UTC', month: 'long', year: 'numeric' });
+  return `<div class="calbar"><button type="button" class="btn sm" data-calnav="-1" aria-label="Previous month">‹</button><h3>${title}</h3><button type="button" class="btn sm" data-calnav="1" aria-label="Next month">›</button><button type="button" class="btn sm" data-calnav="0">Today</button><span class="muted">${inMonth} session${inMonth === 1 ? '' : 's'} this month</span></div>
+  <div class="cal">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x) => `<div class="cdow">${x}</div>`).join('')}${cells}</div>
+  ${inMonth ? '' : '<p class="muted calnone">No sessions this month.</p>'}
+  <div class="legend"><span><i style="background:var(--ok)"></i>All confirmed</span><span><i style="background:var(--warn)"></i>Waiting for reply</span><span><i style="background:var(--bad)"></i>Can't attend or coach on leave</span><span><i></i>Not notified yet (dashed)</span><span><i style="background:var(--info)"></i>Attendance logged</span><span>Tap a session to open it in Schedule.</span></div>`;
 }
 
 function renderSchedule() {
@@ -398,7 +451,7 @@ function renderSchedule() {
     ss.forEach((s) => {
       const c = clash(s), last = D.changes.filter((x) => x.session_id === s.id && !x.trainee_id).pop();
       const needsLog = s.status === 'scheduled' && s.date < today;
-      h += `<div class="sess ${s.status}">
+      h += `<div class="sess ${s.status}" id="s-${s.id}">
         <div class="time">${fmtT(s.start_time)}<small>${fmtT(s.end_time)} · ${hrs(s)}h</small></div>
         <div class="what"><h4>${esc(s.coach.name)}</h4><div class="meta">📍 ${esc(s.branch)}</div>${classList(s.classes_note)}
           <div class="chips">${s.session_trainees.map((x) => chip(x, s)).join('') || '<span class="muted">No trainees</span>'}</div>
@@ -797,6 +850,19 @@ function dlgLeave() {
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button'); if (!t || t.closest('dialog')) return;
   if (t.classList.contains('tab')) { tab = t.dataset.tab; try { localStorage.setItem('hf-tab', tab); } catch (x) {} render(); return; }
+  if (t.dataset.calnav !== undefined) {
+    const n = +t.dataset.calnav, [y, m] = calMonth.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1));
+    calMonth = n ? d.toISOString().slice(0, 7) : todaySG().slice(0, 7); render(); return;
+  }
+  if (t.dataset.cal) { // open the session's card in the Schedule tab
+    const cs = D.sessions.find((x) => x.id === t.dataset.cal); if (!cs) return;
+    tab = 'schedule'; fCoach = ''; fTrainee = '';
+    if (cs.date < todaySG() && cs.status !== 'scheduled') fView = 'all';
+    render();
+    const el = document.getElementById('s-' + cs.id);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); }
+    return;
+  }
   const s = t.dataset.id && D.sessions.find((x) => x.id === t.dataset.id);
   if (t.dataset.act) return ({ attend: dlgAttend, resched: dlgResched, cancel: dlgCancel, postpone: dlgPostpone, notify: dlgNotify })[t.dataset.act](s);
   if (t.dataset.add) return ({ trainee: () => dlgTrainee(), coach: () => dlgCoach(), leave: dlgLeave })[t.dataset.add]();
