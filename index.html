@@ -163,7 +163,10 @@ dialog::backdrop{background:rgba(5,20,26,.5)}
 .invite-acts{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:0}
 .invite-acts .btn{white-space:normal;justify-content:center;text-align:center}
 .slots{display:flex;flex-direction:column;gap:6px}
-.daychips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.daychips{max-height:200px;overflow-y:auto;padding-right:4px}
+.dmonth{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:8px 0 4px}
+.dmonth:first-child{margin-top:0}
+.drow{display:flex;flex-wrap:wrap;gap:6px}
 .daychip{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;font-size:13px}
 .daychip span{font-size:11.5px;color:var(--muted)}
 .daychip.on{border-color:var(--pool);background:var(--pool-soft)}
@@ -610,8 +613,8 @@ form.addEventListener('submit', async (e) => {
 const opts = (arr, sel, val = (x) => x, lab = (x) => x) => arr.map((x) => `<option value="${esc(val(x))}" ${val(x) === sel ? 'selected' : ''}>${esc(lab(x))}</option>`).join('');
 const foot = (label, cls = 'primary') => `<footer><button class="btn" value="x" formnovalidate>Close</button><button class="btn ${cls}" value="ok">${label}</button></footer>`;
 
-// Dates in the next 3 weeks when the coach has classes (from the synced Digital Brain timetable)
-function upcomingDays(coachId, days = 21) {
+// Dates in the next 3 months when the coach has classes (from the synced Digital Brain timetable)
+function upcomingDays(coachId, days = 91) {
   const out = [];
   for (let i = 0; i <= days; i++) {
     const d = addDays(todaySG(), i), blocks = slotsFor(coachId, d), n = blocks.reduce((k, b) => k + b.classes.length, 0);
@@ -626,7 +629,7 @@ function dlgNew() {
   open(`<header><h2>New attachment session</h2><p>Pick the coach and a day, then tick the classes the trainee will join.</p></header>
   <div class="body">
     <div class="f"><label for="n-coach">Senior coach</label><select id="n-coach" name="coach_id">${opts(coaches, '', (c) => c.id, (c) => c.name)}</select></div>
-    <div class="f"><span class="lbl">Day (next 3 weeks)</span><div id="n-days" class="daychips"></div></div>
+    <div class="f"><span class="lbl">Day (next 3 months)</span><div id="n-days" class="daychips"></div></div>
     <div class="f"><span class="lbl">Classes that day: tick the ones to join</span><div id="n-list" class="clist"></div></div>
     <div class="hint" id="n-hint"></div>
     <details id="n-man"><summary>Edit the slot by hand</summary>
@@ -687,10 +690,12 @@ function dlgNew() {
     days = upcomingDays(coach);
     if (!days.length) {
       day = null; $('#n-list').innerHTML = '';
-      $('#n-days').innerHTML = `<p class="muted" style="margin:0;font-size:13px">${D.classes.some((c) => c.coach_id === coach) ? 'No classes in the next 3 weeks.' : "This coach's timetable isn't synced yet. Request a sync in Settings, or edit the slot by hand below."}</p>`;
+      $('#n-days').innerHTML = `<p class="muted" style="margin:0;font-size:13px">${D.classes.some((c) => c.coach_id === coach) ? 'No classes in the next 3 months.' : "This coach's timetable isn't synced yet. Request a sync in Settings, or edit the slot by hand below."}</p>`;
       $('#n-man').open = true; hint(); return;
     }
-    $('#n-days').innerHTML = days.map((d, i) => `<button type="button" class="daychip" data-day="${i}" ${d.leave ? `disabled title="On ${esc(d.leave.reason)}"` : ''}><b>${asUTC(d.date).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}</b><span>${d.leave ? 'On leave' : d.n + ' classes'}</span></button>`).join('');
+    const dayChip = (d, i) => `<button type="button" class="daychip" data-day="${i}" ${d.leave ? `disabled title="On ${esc(d.leave.reason)}"` : ''}><b>${asUTC(d.date).toLocaleDateString('en-SG', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}</b><span>${d.leave ? 'On leave' : d.n + ' classes'}</span></button>`;
+    const months = [...new Set(days.map((d) => d.date.slice(0, 7)))]; // chips grouped under a month heading
+    $('#n-days').innerHTML = months.map((m) => `<div class="dmonth">${asUTC(m + '-01').toLocaleDateString('en-SG', { timeZone: 'UTC', month: 'long', year: 'numeric' })}</div><div class="drow">${days.map((d, i) => (d.date.startsWith(m) ? dayChip(d, i) : '')).join('')}</div>`).join('');
     const first = days.findIndex((d) => !d.leave);
     pickDay(first >= 0 ? first : null);
   };
