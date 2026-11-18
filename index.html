@@ -290,7 +290,7 @@ const sentMsg = (r) => {
 async function load() {
   const since = addDays(todaySG(), -400);
   const q = await Promise.all([
-    sb.from('sessions').select('*, coach:coaches(name), session_trainees(trainee_id,response,attendance,hours_credited,attendance_by,checkin_sent_at,checkin_reminded_at,feedback)').gte('date', since).order('date').order('start_time'),
+    sb.from('sessions').select('*, coach:coaches(name), session_trainees(trainee_id,response,attendance,hours_credited,attendance_by,checkin_sent_at,checkin_reminded_at,feedback,absent_reason)').gte('date', since).order('date').order('start_time'),
     sb.from('trainees').select('*').order('name'),
     sb.from('coaches').select('*').order('name'),
     sb.from('branches').select('*').eq('active', true).order('name'),
@@ -478,6 +478,7 @@ function renderSchedule() {
           ${s.coach_remark ? `<div class="note">💬 ${esc(s.coach_remark)}</div>` : ''}
           ${needsLog ? `<div class="note" style="background:var(--warn-soft);color:var(--warn)">${logNote(s)}</div>` : ''}
           ${s.session_trainees.filter((x) => x.feedback).map((x) => `<div class="note">📝 <b>${esc(tr(x.trainee_id).name)}</b>: ${esc(x.feedback)}</div>`).join('')}
+          ${s.session_trainees.filter((x) => x.absent_reason).map((x) => `<div class="note bad">🙅 <b>${esc(tr(x.trainee_id).name)}</b> didn't attend: ${esc(x.absent_reason)}</div>`).join('')}
           ${s.status === 'scheduled' && s.dbcheck_at ? (s.dbcheck_status === 'ok'
             ? `<div class="meta" style="margin-top:6px;font-size:12px">✓ Coach confirmed in Digital Brain · checked ${new Date(s.dbcheck_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', weekday: 'short', hour: 'numeric', minute: '2-digit' })}</div>`
             : s.dbcheck_status === 'away' ? '' : `<div class="note" style="background:var(--warn-soft);color:var(--warn)">Digital Brain check: ${({ partial: 'coach only teaches part of this slot', no_lessons: 'no lessons found in this slot', error: "couldn't be checked" })[s.dbcheck_status] || s.dbcheck_status}${s.dbcheck_detail ? ' · ' + esc(s.dbcheck_detail) : ''}</div>`) : ''}
@@ -514,8 +515,8 @@ function reportCSV(kind) {
   const out = kind === 'summary'
     ? [['Trainee', 'Batch', 'Hours logged', 'Hours required', 'Hours remaining', 'Sessions attended', 'Absences', 'Last attended', 'Status', 'Completed on'],
       ...rows.map((r) => [r.t.name, r.t.batch, r.done, r.req, r.left, r.att, r.abs, r.last ? r.last.s.date : '', r.complete ? 'Completed' : 'In progress', r.doneOn || ''])]
-    : [['Trainee', 'Batch', 'Date', 'Senior coach', 'Branch', 'From', 'To', 'Attendance', 'Hours credited', 'Running total', 'Logged by', 'Feedback'],
-      ...rows.flatMap((r) => r.recs.map((z) => [r.t.name, r.t.batch, z.s.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum, z.x.attendance_by === 'trainee' ? 'Trainee (Telegram)' : 'Assistant', z.x.feedback || '']))];
+    : [['Trainee', 'Batch', 'Date', 'Senior coach', 'Branch', 'From', 'To', 'Attendance', 'Hours credited', 'Running total', 'Logged by', 'Feedback', 'Reason not attended'],
+      ...rows.flatMap((r) => r.recs.map((z) => [r.t.name, r.t.batch, z.s.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum, z.x.attendance_by === 'trainee' ? 'Trainee (Telegram)' : 'Assistant', z.x.feedback || '', z.x.absent_reason || '']))];
   return out.map((r) => r.map(csvCell).join(',')).join('\n');
 }
 function renderReports() {
@@ -535,7 +536,7 @@ function renderReports() {
       <td class="num mono">${r.left ? r.left + 'h' : '–'}</td><td class="num mono">${r.att}</td><td class="num mono ${r.abs ? 'bad' : ''}">${r.abs}</td>
       <td class="mono">${r.last ? fmtDay(r.last.s.date) : '–'}</td>
       <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
-    if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th><th>Feedback</th></tr></thead><tbody>${r.recs.map((z) => `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.x.feedback || '')}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
+    if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th><th>Feedback / reason</th></tr></thead><tbody>${r.recs.map((z) => `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.x.feedback || (z.x.absent_reason ? 'Why not: ' + z.x.absent_reason : ''))}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
   });
   return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Hours come from logged attendance: the trainee's Telegram check-in after the session, or the assistant. Present = full slot, absent = 0. Cancelled and postponed sessions don't count.</p>`;
 }
