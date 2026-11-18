@@ -263,7 +263,9 @@ const LEAVE = ['MC', 'Annual leave', 'Emergency leave', 'Other leave'];
 let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [], classes: [], syncs: [] };
 let me = null, tab = 'schedule', bot = null;
 let fView = 'upcoming', fCoach = '', fTrainee = '', repBatch = '', repShow = 'all', repOpen = null;
-try { tab = localStorage.getItem('hf-tab') || 'schedule'; } catch (e) {}
+// localStorage throws when the browser blocks storage; the tab then just isn't remembered
+const pref = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { return false; } } };
+tab = pref.get('hf-tab') || 'schedule';
 
 async function api(action, params = {}) {
   const { data: { session } } = await sb.auth.getSession();
@@ -854,7 +856,7 @@ function dlgLeave() {
 /* ---------- events ---------- */
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('button'); if (!t || t.closest('dialog')) return;
-  if (t.classList.contains('tab')) { tab = t.dataset.tab; try { localStorage.setItem('hf-tab', tab); } catch (x) {} render(); return; }
+  if (t.classList.contains('tab')) { tab = t.dataset.tab; pref.set('hf-tab', tab); render(); return; }
   if (t.dataset.calnav !== undefined) {
     const n = +t.dataset.calnav, [y, m] = calMonth.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1));
     calMonth = n ? d.toISOString().slice(0, 7) : todaySG().slice(0, 7); render(); return;
@@ -947,8 +949,10 @@ async function start() {
   if (!ok) { started = false; $('#login').hidden = false; $('#loginMsg').textContent = `${me} isn't allowed to use this console. Ask an admin to add you.`; await sb.auth.signOut(); return; }
   $('#who').hidden = false; $('#whoEmail').textContent = me; $('#app').hidden = false; $('#login').hidden = true;
   await load(); refreshBot();
-  setInterval(() => { if (!dlg.open && document.visibilityState === 'visible') load().catch(() => {}); }, 60000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !dlg.open) load().catch(() => {}); });
+  // Background refresh: on failure say so, otherwise the page silently shows stale data (e.g. after sign-in expires)
+  const refresh = () => load().catch((e) => toast(`Couldn't refresh: ${e.message}`));
+  setInterval(() => { if (!dlg.open && document.visibilityState === 'visible') refresh(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !dlg.open) refresh(); });
 }
 sb.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN') start(); });
 start().catch((e) => toast(e.message));
