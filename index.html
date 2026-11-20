@@ -519,6 +519,11 @@ function reportCSV(kind) {
       ...rows.flatMap((r) => r.recs.map((z) => [r.t.name, r.t.batch, z.s.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum, z.x.attendance_by === 'trainee' ? 'Trainee (Telegram)' : 'Assistant', z.x.feedback || '', z.x.absent_reason || '']))];
   return out.map((r) => r.map(csvCell).join(',')).join('\n');
 }
+// Trainees who finish the 24-hour attachment get the coach bot link from the attachment bot (not the 8-hour kids-syllabus trainees)
+const COACH_BOT_URL = 'https://t.me/happyfishcoachbot';
+const coachBotLine = (t) => Number(t.required_hours) < 24 ? ''
+  : t.coach_bot_invited_at ? `<div class="muted" style="font-size:12px">Coach bot link sent ${fmtDay(t.coach_bot_invited_at.slice(0, 10))}</div>`
+  : `<div class="warn" style="font-size:12px">Send them ${COACH_BOT_URL}${t.telegram_chat_id ? '' : ' (not on Telegram)'}</div>`;
 function renderReports() {
   const rows = reportRows(), batches = [...new Set(D.trainees.map((t) => t.batch).filter(Boolean))];
   const nDone = rows.filter((r) => r.complete).length, noBook = rows.filter((r) => !r.complete && !r.next && r.t.active).length;
@@ -535,7 +540,7 @@ function renderReports() {
       <td><div class="prog"><div class="bar"><i style="width:${Math.min(100, r.done / r.req * 100)}%;${r.complete ? 'background:var(--ok)' : ''}"></i></div><span class="mono">${r.done}/${r.req}h</span></div></td>
       <td class="num mono">${r.left ? r.left + 'h' : '–'}</td><td class="num mono">${r.att}</td><td class="num mono ${r.abs ? 'bad' : ''}">${r.abs}</td>
       <td class="mono">${r.last ? fmtDay(r.last.s.date) : '–'}</td>
-      <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
+      <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>${coachBotLine(r.t)}` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
     if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th><th>Feedback / reason</th></tr></thead><tbody>${r.recs.map((z) => `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.x.feedback || (z.x.absent_reason ? 'Why not: ' + z.x.absent_reason : ''))}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
   });
   return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Hours come from logged attendance: the trainee's Telegram check-in after the session, or the assistant. Present = full slot, absent = 0. Cancelled and postponed sessions don't count.</p>`;
