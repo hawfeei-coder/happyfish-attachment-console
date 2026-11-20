@@ -610,6 +610,7 @@ function renderSettings() {
       <p style="margin:0 0 8px">${mine.telegram_chat_id ? '<span class="ok">● Linked</span> to your Telegram.' : 'Link your own Telegram to get alerts from the console.'}</p>
       ${link ? `<div class="acts" style="margin-bottom:10px"><a class="btn sm" href="${esc(link)}" target="_blank" rel="noopener">${mine.telegram_chat_id ? 'Re-link' : 'Link my Telegram'}</a></div>` : '<p class="muted" style="font-size:13px">Connect the bot first.</p>'}
       <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" id="notifyLeave" ${mine.notify_leave ? 'checked' : ''}> Coach leave alerts (nightly Digital Brain check)</label>
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><input type="checkbox" id="notifyTrainee" ${mine.notify_trainee ? 'checked' : ''}> Trainee alerts (may not finish in 2 months, couldn't be rebooked)</label>
       <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="notifySync" ${mine.notify_sync ? 'checked' : ''}> Send me timetable sync requests</label>
     </div>`; })()}
   </div>`;
@@ -929,8 +930,9 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('change', async (e) => {
   const id = e.target.id, v = e.target.value;
-  if (id === 'notifySync' || id === 'notifyLeave') {
-    const col = id === 'notifySync' ? 'notify_sync' : 'notify_leave';
+  const ALERT_COL = { notifySync: 'notify_sync', notifyLeave: 'notify_leave', notifyTrainee: 'notify_trainee' };
+  if (ALERT_COL[id]) {
+    const col = ALERT_COL[id];
     const { error } = await sb.from('admins').update({ [col]: e.target.checked }).eq('email', me);
     toast(error ? error.message : e.target.checked ? "Turned on. Alerts come to your linked Telegram." : 'Alerts turned off.');
     return load();
