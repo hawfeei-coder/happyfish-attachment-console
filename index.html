@@ -260,7 +260,7 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('s
 
 const REASONS = ['Lightning / wet weather', 'Coach on MC or leave', 'Class cancelled (no students)', 'Pool closure or maintenance', 'Public holiday', 'Other'];
 const LEAVE = ['MC', 'Annual leave', 'Emergency leave', 'Other leave'];
-let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [], classes: [], syncs: [] };
+let D = { sessions: [], trainees: [], coaches: [], branches: [], leave: [], log: [], changes: [], admins: [], notif: [], classes: [], syncs: [], adj: [] };
 let me = null, tab = 'schedule', bot = null;
 let fView = 'upcoming', fCoach = '', fTrainee = '', repBatch = '', repShow = 'all', repOpen = null;
 // localStorage throws when the browser blocks storage; the tab then just isn't remembered
@@ -301,10 +301,11 @@ async function load() {
     sb.from('notifications').select('session_id,trainee_id,kind,status,error,created_at').neq('status', 'sent').gte('created_at', addDays(todaySG(), -30)),
     sb.from('coach_classes').select('*').order('start_time'),
     sb.from('sync_requests').select('*').order('requested_at', { ascending: false }).limit(5),
+    sb.from('hour_adjustments').select('*, coach:coaches(name)').order('date'),
   ]);
   const err = q.find((r) => r.error);
   if (err) throw new Error(err.error.message);
-  [D.sessions, D.trainees, D.coaches, D.branches, D.leave, D.log, D.changes, D.admins, D.notif, D.classes, D.syncs] = q.map((r) => r.data);
+  [D.sessions, D.trainees, D.coaches, D.branches, D.leave, D.log, D.changes, D.admins, D.notif, D.classes, D.syncs, D.adj] = q.map((r) => r.data);
   render();
 }
 const tr = (id) => D.trainees.find((t) => t.id === id) || { name: 'Unknown', required_hours: 24 };
@@ -313,7 +314,10 @@ const clash = (s) => s.status === 'scheduled' && leaveOn(s.coach_id, s.date);
 const nextFreeWeek = (coachId, d) => { let n = addDays(d, 7); for (let i = 0; i < 8 && leaveOn(coachId, n); i++) n = addDays(n, 7); return n; };
 // Hours count once attendance is logged (trainee check-in or assistant), on any session that wasn't cancelled
 const counts = (s) => s.status !== 'cancelled';
-const hoursOf = (tid) => round2(D.sessions.filter(counts).reduce((n, s) => n + s.session_trainees.filter((x) => x.trainee_id === tid).reduce((m, x) => m + Number(x.hours_credited), 0), 0));
+// plus hours added by hand (Trainees → Hours), e.g. an attachment that was attended but never logged
+const sessionHoursOf = (tid) => round2(D.sessions.filter(counts).reduce((n, s) => n + s.session_trainees.filter((x) => x.trainee_id === tid).reduce((m, x) => m + Number(x.hours_credited), 0), 0));
+const adjOf = (tid) => D.adj.filter((a) => a.trainee_id === tid);
+const hoursOf = (tid) => round2(sessionHoursOf(tid) + adjOf(tid).reduce((n, a) => n + Number(a.hours), 0));
 const lastSynced = () => D.classes.reduce((m, c) => (c.synced_at > m ? c.synced_at : m), '');
 const pendingSync = () => D.syncs.find((s) => s.status === 'pending');
 const ago = (ts) => { if (!ts) return 'never'; const d = Math.round((Date.now() - new Date(ts)) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
@@ -499,14 +503,17 @@ function renderSchedule() {
 /* ---------- reports ---------- */
 function reportRows() {
   return D.trainees.filter((t) => !repBatch || t.batch === repBatch).map((t) => {
-    const recs = D.sessions.filter(counts).flatMap((s) => s.session_trainees.filter((x) => x.trainee_id === t.id && x.attendance).map((x) => ({ s, x })));
+    const recs = [...D.sessions.filter(counts).flatMap((s) => s.session_trainees.filter((x) => x.trainee_id === t.id && x.attendance).map((x) => ({ date: s.date, s, x }))),
+      ...adjOf(t.id).map((a) => ({ date: a.date, a }))].sort((p, q) => p.date.localeCompare(q.date));
+    const hrsOf = (r) => Number(r.a ? r.a.hours : r.x.hours_credited);
+    const attended = (r) => r.a ? Number(r.a.hours) > 0 : r.x.attendance === 'present';
     let run = 0, doneOn = null;
     const req = Number(t.required_hours);
-    recs.forEach((r) => { run += Number(r.x.hours_credited); r.cum = round2(run); if (!doneOn && run >= req) doneOn = r.s.date; });
+    recs.forEach((r) => { run += hrsOf(r); r.cum = round2(run); if (!doneOn && run >= req) doneOn = r.date; });
     const done = round2(run);
     return { t, recs, done, req, complete: done >= req, doneOn, left: Math.max(0, round2(req - done)),
-      att: recs.filter((r) => r.x.attendance === 'present').length, abs: recs.filter((r) => r.x.attendance === 'absent').length,
-      last: [...recs].reverse().find((r) => r.x.attendance === 'present'), next: upcomingFor(t.id)[0] };
+      att: recs.filter(attended).length, abs: recs.filter((r) => r.x?.attendance === 'absent').length,
+      last: [...recs].reverse().find(attended), next: upcomingFor(t.id)[0] };
   }).filter((r) => repShow === 'all' || (repShow === 'done' ? r.complete : !r.complete));
 }
 const csvCell = (v) => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -514,9 +521,11 @@ function reportCSV(kind) {
   const rows = reportRows();
   const out = kind === 'summary'
     ? [['Trainee', 'Batch', 'Hours logged', 'Hours required', 'Hours remaining', 'Sessions attended', 'Absences', 'Last attended', 'Status', 'Completed on'],
-      ...rows.map((r) => [r.t.name, r.t.batch, r.done, r.req, r.left, r.att, r.abs, r.last ? r.last.s.date : '', r.complete ? 'Completed' : 'In progress', r.doneOn || ''])]
+      ...rows.map((r) => [r.t.name, r.t.batch, r.done, r.req, r.left, r.att, r.abs, r.last ? r.last.date : '', r.complete ? 'Completed' : 'In progress', r.doneOn || ''])]
     : [['Trainee', 'Batch', 'Date', 'Senior coach', 'Branch', 'From', 'To', 'Attendance', 'Hours credited', 'Running total', 'Logged by', 'Feedback', 'Reason not attended'],
-      ...rows.flatMap((r) => r.recs.map((z) => [r.t.name, r.t.batch, z.s.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum, z.x.attendance_by === 'trainee' ? 'Trainee (Telegram)' : 'Assistant', z.x.feedback || '', z.x.absent_reason || '']))];
+      ...rows.flatMap((r) => r.recs.map((z) => z.a
+        ? [r.t.name, r.t.batch, z.date, z.a.coach?.name || '', '', '', '', 'Added by hand', Number(z.a.hours), z.cum, z.a.created_by, z.a.note, '']
+        : [r.t.name, r.t.batch, z.date, z.s.coach.name, z.s.branch, z.s.start_time.slice(0, 5), z.s.end_time.slice(0, 5), z.x.attendance === 'present' ? 'Present' : 'Absent', Number(z.x.hours_credited), z.cum, z.x.attendance_by === 'trainee' ? 'Trainee (Telegram)' : 'Assistant', z.x.feedback || '', z.x.absent_reason || '']))];
   return out.map((r) => r.map(csvCell).join(',')).join('\n');
 }
 // Trainees who finish the 24-hour attachment get the coach bot link from the attachment bot (not the 8-hour kids-syllabus trainees)
@@ -539,11 +548,11 @@ function renderReports() {
     h += `<tr><td><button class="rname" data-rep="${r.t.id}" aria-expanded="${open}"><span class="muted">${open ? '▾' : '▸'}</span><span><b>${esc(r.t.name)}</b><small>${esc(r.t.batch || '')}</small></span></button></td>
       <td><div class="prog"><div class="bar"><i style="width:${Math.min(100, r.done / r.req * 100)}%;${r.complete ? 'background:var(--ok)' : ''}"></i></div><span class="mono">${r.done}/${r.req}h</span></div></td>
       <td class="num mono">${r.left ? r.left + 'h' : '–'}</td><td class="num mono">${r.att}</td><td class="num mono ${r.abs ? 'bad' : ''}">${r.abs}</td>
-      <td class="mono">${r.last ? fmtDay(r.last.s.date) : '–'}</td>
+      <td class="mono">${r.last ? fmtDay(r.last.date) : '–'}</td>
       <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>${coachBotLine(r.t)}` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
-    if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th><th>Feedback / reason</th></tr></thead><tbody>${r.recs.map((z) => `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.x.feedback || (z.x.absent_reason ? 'Why not: ' + z.x.absent_reason : ''))}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
+    if (open) h += `<tr class="det"><td colspan="7"><div class="tbl"><table><thead><tr><th>Date</th><th>Senior coach</th><th>Branch</th><th>Time</th><th>Attendance</th><th class="num">Hours</th><th class="num">Running total</th><th>Feedback / reason</th></tr></thead><tbody>${r.recs.map((z) => z.a ? `<tr><td class="mono">${fmtDay(z.date)}</td><td>${esc(z.a.coach?.name || '–')}</td><td colspan="2" class="muted">Added by hand</td><td class="${Number(z.a.hours) > 0 ? 'ok' : 'bad'}">${Number(z.a.hours) > 0 ? 'Attended' : 'Correction'}</td><td class="num mono">${Number(z.a.hours) > 0 ? '+' : ''}${Number(z.a.hours)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.a.note)}</td></tr>` : `<tr><td class="mono">${fmtDay(z.s.date)}</td><td>${esc(z.s.coach.name)}</td><td>${esc(short(z.s.branch))}</td><td class="mono">${fmtT(z.s.start_time)}–${fmtT(z.s.end_time)}</td><td class="${z.x.attendance === 'present' ? 'ok' : 'bad'}">${z.x.attendance === 'present' ? 'Present' : 'Absent'}</td><td class="num mono">${Number(z.x.hours_credited)}</td><td class="num mono">${z.cum}</td><td class="muted" style="font-size:12.5px">${esc(z.x.feedback || (z.x.absent_reason ? 'Why not: ' + z.x.absent_reason : ''))}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No attendance logged yet.</td></tr>'}</tbody></table></div></td></tr>`;
   });
-  return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Hours come from logged attendance: the trainee's Telegram check-in after the session, or the assistant. Present = full slot, absent = 0. Cancelled and postponed sessions don't count.</p>`;
+  return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Hours come from logged attendance: the trainee's Telegram check-in after the session, or the assistant. Present = full slot, absent = 0. Cancelled and postponed sessions don't count. Hours added by hand (Trainees → Hours) are included.</p>`;
 }
 
 /* ---------- trainees ---------- */
@@ -558,7 +567,7 @@ function renderTrainees() {
       <td>${t.telegram_chat_id ? `<span class="ok">● Linked</span>${t.telegram_username ? `<div class="muted mono" style="font-size:12px">@${esc(t.telegram_username)}</div>` : ''}` : '<span class="warn">● Not linked</span>'}</td>
       <td>${!link ? '<span class="muted">–</span>' : t.telegram_chat_id ? `<button class="btn sm" data-invite="${t.id}">Re-send invite</button>` : `<button class="btn sm primary" data-invite="${t.id}">Invite to Telegram</button>`}</td>
       <td class="num mono">${hoursOf(t.id)}/${Number(t.required_hours)}h</td>
-      <td><div class="acts"><button class="btn sm" data-edit="trainee" data-id="${t.id}">Edit</button></div></td></tr>`;
+      <td><div class="acts"><button class="btn sm" data-hours="${t.id}">Hours</button><button class="btn sm" data-edit="trainee" data-id="${t.id}">Edit</button></div></td></tr>`;
   });
   return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Send each trainee their invite. When they tap Start in Telegram, they're linked and get all alerts.</p>`;
 }
@@ -811,6 +820,21 @@ function dlgAttend(s) {
     return 'Attendance saved. Hours updated.';
   });
 }
+// Add hours by hand, e.g. an attachment the trainee attended that was never booked or logged. Nothing is sent to the trainee
+// (except the coach bot link if this completes their 24 hours).
+function dlgHours(t) {
+  const list = adjOf(t.id), coaches = D.coaches.filter((c) => c.active);
+  open(`<header><h2>Hours for ${esc(t.name)}</h2><p><b class="mono">${hoursOf(t.id)}/${Number(t.required_hours)}h</b>: ${sessionHoursOf(t.id)}h from logged sessions${list.length ? `, ${round2(hoursOf(t.id) - sessionHoursOf(t.id))}h added by hand` : ''}.</p></header><div class="body">
+    ${list.length ? `<div class="f"><span class="lbl">Added by hand</span><table><tbody>${list.map((a) => `<tr><td class="mono" style="white-space:nowrap">${fmtDay(a.date)}</td><td class="num mono" style="white-space:nowrap">${Number(a.hours) > 0 ? '+' : ''}${Number(a.hours)}h</td><td>${esc(a.coach?.name || '')}<div class="muted" style="font-size:12px">${esc(a.note)} · ${esc(a.created_by)}</div></td><td class="num"><button type="button" class="btn sm" data-delhours="${a.id}">Remove</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="row2"><div class="f"><label for="h-date">Date of the attachment</label><input id="h-date" name="date" type="date" required max="${todaySG()}"></div>
+      <div class="f"><label for="h-hours">Hours</label><input id="h-hours" name="hours" type="number" required step="0.25" min="-24" max="24" placeholder="e.g. 3"></div></div>
+    <div class="f"><label for="h-coach">Senior coach (optional)</label><select id="h-coach" name="coach_id"><option value="">–</option>${opts(coaches, '', (c) => c.id, (c) => c.name)}</select></div>
+    <div class="f"><label for="h-note">Note</label><textarea id="h-note" name="note" required placeholder="e.g. Attended 14 Nov with Finn at Jurong East, not logged"></textarea></div>
+    <p class="muted" style="margin:0;font-size:13px">Use a minus number (e.g. -1.5) to take hours off. The trainee isn't messaged; they see the new total with /hours.</p>${errP}</div>${foot('Add hours')}`, async (fd) => {
+    const r = await api('addHours', { trainee_id: t.id, date: fd.get('date'), hours: Number(fd.get('hours')), coach_id: fd.get('coach_id') || null, note: fd.get('note') });
+    return `Hours added. ${t.name} is now at ${r.total}/${Number(t.required_hours)}h.`;
+  });
+}
 function dlgTrainee(t) {
   open(`<header><h2>${t ? 'Edit trainee' : 'Add trainee'}</h2></header><div class="body">
     <div class="f"><label for="t-name">Full name</label><input id="t-name" name="name" required value="${esc(t?.name || '')}"></div>
@@ -907,6 +931,13 @@ document.addEventListener('click', async (e) => {
     a.download = `attachment-${t.dataset.csv}-${todaySG()}.csv`; a.click(); return;
   }
   if (t.dataset.invite) return dlgInvite(D.trainees.find((x) => x.id === t.dataset.invite));
+  if (t.dataset.hours) return dlgHours(D.trainees.find((x) => x.id === t.dataset.hours));
+  if (t.dataset.delhours) {
+    const a = D.adj.find((x) => x.id === t.dataset.delhours), tt = tr(a.trainee_id);
+    if (!confirm(`Remove ${Number(a.hours)}h for ${fmtDay(a.date)} from ${tt.name}?`)) return;
+    try { await api('removeHours', { id: a.id }); toast('Removed.'); await load(); dlgHours(tt); } catch (x) { toast(x.message); }
+    return;
+  }
   if (t.dataset.copy) {
     const tt = D.trainees.find((x) => x.id === t.dataset.copy);
     const txt = `Hi ${tt.name.split(' ')[0]}, please tap this link and press Start to get your Happy Fish attachment schedule and alerts on Telegram:\n${linkFor(tt)}`;
