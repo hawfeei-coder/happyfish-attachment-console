@@ -112,6 +112,8 @@ td.num,th.num{text-align:right}
 .bar{height:8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;flex:1;min-width:90px}
 .bar i{display:block;height:100%;background:var(--pool)}
 .prog{display:flex;align-items:center;gap:8px;min-width:150px}
+.prog>span{min-width:7ch;white-space:nowrap}
+@media (max-width:640px){.prog{min-width:110px}.bar{min-width:44px}}
 .rname{display:flex;gap:8px;align-items:center;border:0;background:none;padding:0;text-align:left}
 .rname small{display:block;color:var(--muted);font-size:12px}
 .det>td{background:var(--bg);padding:6px 10px 12px}
@@ -318,6 +320,8 @@ const counts = (s) => s.status !== 'cancelled';
 const sessionHoursOf = (tid) => round2(D.sessions.filter(counts).reduce((n, s) => n + s.session_trainees.filter((x) => x.trainee_id === tid).reduce((m, x) => m + Number(x.hours_credited), 0), 0));
 const adjOf = (tid) => D.adj.filter((a) => a.trainee_id === tid);
 const hoursOf = (tid) => round2(sessionHoursOf(tid) + adjOf(tid).reduce((n, a) => n + Number(a.hours), 0));
+// Hours as a progress bar with "done/required h" beside it (green once complete)
+const progBar = (done, req) => `<div class="prog" role="img" aria-label="${done} of ${req} hours"><div class="bar"><i style="width:${Math.max(0, Math.min(100, done / req * 100))}%;${done >= req ? 'background:var(--ok)' : ''}"></i></div><span class="mono">${done}/${req}h</span></div>`;
 const lastSynced = () => D.classes.reduce((m, c) => (c.synced_at > m ? c.synced_at : m), '');
 const pendingSync = () => D.syncs.find((s) => s.status === 'pending');
 const ago = (ts) => { if (!ts) return 'never'; const d = Math.round((Date.now() - new Date(ts)) / 864e5); return d <= 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`; };
@@ -546,7 +550,7 @@ function renderReports() {
   rows.forEach((r) => {
     const open = repOpen === r.t.id;
     h += `<tr><td><button class="rname" data-rep="${r.t.id}" aria-expanded="${open}"><span class="muted">${open ? '▾' : '▸'}</span><span><b>${esc(r.t.name)}</b><small>${esc(r.t.batch || '')}</small></span></button></td>
-      <td><div class="prog"><div class="bar"><i style="width:${Math.min(100, r.done / r.req * 100)}%;${r.complete ? 'background:var(--ok)' : ''}"></i></div><span class="mono">${r.done}/${r.req}h</span></div></td>
+      <td>${progBar(r.done, r.req)}</td>
       <td class="num mono">${r.left ? r.left + 'h' : '–'}</td><td class="num mono">${r.att}</td><td class="num mono ${r.abs ? 'bad' : ''}">${r.abs}</td>
       <td class="mono">${r.last ? fmtDay(r.last.date) : '–'}</td>
       <td>${r.complete ? `<span class="pill p-completed">Completed</span><div class="muted" style="font-size:12px">on ${fmtDay(r.doneOn)}</div>${coachBotLine(r.t)}` : `<span class="pill p-progress">In progress</span><div style="font-size:12px" class="${r.next ? 'muted' : 'warn'}">${r.next ? 'Next: ' + fmtDay(r.next.date) : 'Nothing booked'}</div>`}</td></tr>`;
@@ -560,13 +564,13 @@ const linkFor = (t) => bot?.username ? `https://t.me/${bot.username}?start=${t.l
 function renderTrainees() {
   let h = `<div class="filters"><button class="btn primary sm" data-add="trainee">+ Add trainee</button><span class="grow"></span>${bot?.username ? `<span class="muted">Bot: @${esc(bot.username)}</span>` : `<span class="warn">Connect the bot in Settings to get trainee invites.</span>`}</div>`;
   if (!D.trainees.length) return h + `<div class="empty">No trainees yet. Add your first trainee.</div>`;
-  h += `<div class="tbl"><table><thead><tr><th>Trainee</th><th>Telegram</th><th>Personal invite</th><th class="num">Hours</th><th></th></tr></thead><tbody>`;
+  h += `<div class="tbl"><table><thead><tr><th>Trainee</th><th>Telegram</th><th>Personal invite</th><th>Hours</th><th></th></tr></thead><tbody>`;
   D.trainees.forEach((t) => {
     const link = linkFor(t);
     h += `<tr style="${t.active ? '' : 'opacity:.5'}"><td><b>${esc(t.name)}</b><div class="muted" style="font-size:12px">${esc(t.batch || '')}${t.phone ? ' · ' + esc(t.phone) : ''}</div></td>
       <td>${t.telegram_chat_id ? `<span class="ok">● Linked</span>${t.telegram_username ? `<div class="muted mono" style="font-size:12px">@${esc(t.telegram_username)}</div>` : ''}` : '<span class="warn">● Not linked</span>'}</td>
       <td>${!link ? '<span class="muted">–</span>' : t.telegram_chat_id ? `<button class="btn sm" data-invite="${t.id}">Re-send invite</button>` : `<button class="btn sm primary" data-invite="${t.id}">Invite to Telegram</button>`}</td>
-      <td class="num mono">${hoursOf(t.id)}/${Number(t.required_hours)}h</td>
+      <td>${progBar(hoursOf(t.id), Number(t.required_hours))}</td>
       <td><div class="acts"><button class="btn sm" data-hours="${t.id}">Hours</button><button class="btn sm" data-edit="trainee" data-id="${t.id}">Edit</button></div></td></tr>`;
   });
   return h + `</tbody></table></div><p class="muted" style="font-size:12.5px">Send each trainee their invite. When they tap Start in Telegram, they're linked and get all alerts.</p>`;
